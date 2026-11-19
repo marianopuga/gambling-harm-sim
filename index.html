@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gambling Harm Systems Lab</title>
+  <meta name="description" content="An agent-based + system dynamics simulation of gambling harm: pull policy levers and reduce moderate and high-risk gambling." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to simulation</a>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><circle cx="9" cy="10" r="4" fill="var(--s1)"/><circle cx="22" cy="9" r="3" fill="var(--s3)"/><circle cx="16" cy="21" r="5" fill="var(--s4)"/><path d="M9 10 L16 21 L22 9" stroke="var(--muted)" stroke-width="1.4" fill="none"/></svg>
+      <div><h1>Gambling Harm Systems Lab</h1><p class="sub" data-i18n="tagline"></p></div>
+    </div>
+    <div class="controls" role="toolbar" aria-label="Simulation controls">
+      <label class="field"><span data-i18n="scenario"></span><select id="scenario"></select></label>
+      <div class="btn-group">
+        <button id="play" class="btn primary" aria-label="Play">▶ <span data-i18n="play"></span></button>
+        <button id="step" class="btn" data-i18n="step"></button>
+        <button id="reset" class="btn" data-i18n="reset"></button>
+      </div>
+      <label class="field"><span data-i18n="speed"></span><input id="speed" type="range" min="1" max="5" value="3" /></label>
+      <details class="menu">
+        <summary class="btn">⚙ <span data-i18n="settings"></span></summary>
+        <div class="menu-body">
+          <label class="field"><span data-i18n="agents"></span><select id="agents"><option>500</option><option>1000</option><option>2000</option><option selected>3000</option><option>5000</option></select></label>
+          <label class="field"><span data-i18n="seed"></span><input id="seed" type="number" value="42" min="1" max="999999" /></label>
+          <label class="field"><span data-i18n="network"></span><select id="network"><option value="smallworld">Small-world</option><option value="grid">Spatial grid</option></select></label>
+          <label class="field"><span data-i18n="compareWith"></span><select id="compare"><option value="">—</option></select></label>
+          <div class="row"><button id="share" class="btn" data-i18n="share"></button><button id="csv" class="btn" data-i18n="csv"></button></div>
+          <button id="theme" class="btn" data-i18n="theme"></button>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="levers" id="levers" aria-label="Policy levers">
+      <div class="levers-head">
+        <h2 data-i18n="levers"></h2>
+        <button class="btn small" id="toggleLevers" aria-expanded="true" data-i18n="hide"></button>
+      </div>
+      <p class="hint" data-i18n="leverHint"></p>
+      <div id="leverGroups"></div>
+    </aside>
+
+    <main id="main">
+      <section class="kpis" id="kpis" aria-live="polite"></section>
+      <section class="stage">
+        <div class="canvas-wrap card">
+          <div class="card-head">
+            <h2 data-i18n="population"></h2>
+            <div class="legend" id="legend"></div>
+          </div>
+          <canvas id="agentCanvas" aria-label="Agent population; each dot is a group of adults colored by gambling risk state" role="img"></canvas>
+          <div class="overlays">
+            <label><input type="checkbox" id="ovSud" checked /> <span data-i18n="ovSud"></span></label>
+            <label><input type="checkbox" id="ovIllegal" checked /> <span data-i18n="ovIllegal"></span></label>
+            <label><input type="checkbox" id="ovLinks" checked /> <span data-i18n="ovLinks"></span></label>
+            <span class="month" id="month"></span>
+          </div>
+          <div class="tooltip" id="agentTip" hidden></div>
+        </div>
+        <div class="card feed">
+          <div class="card-head"><h2 data-i18n="why"></h2></div>
+          <ol id="events" class="events"></ol>
+        </div>
+      </section>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="charts" data-i18n="tabCharts"></button>
+        <button role="tab" aria-selected="false" data-tab="cld" data-i18n="tabCld"></button>
+        <button role="tab" aria-selected="false" data-tab="analysis" data-i18n="tabAnalysis"></button>
+        <button role="tab" aria-selected="false" data-tab="missions" data-i18n="tabMissions"></button>
+        <button role="tab" aria-selected="false" data-tab="model" data-i18n="tabModel"></button>
+      </nav>
+      <section class="tab" id="tab-charts">
+        <div class="charts" id="charts"></div>
+      </section>
+      <section class="tab" id="tab-cld" hidden>
+        <div class="card"><div id="cld"></div></div>
+      </section>
+      <section class="tab" id="tab-analysis" hidden>
+        <div class="analysis">
+          <div class="card">
+            <div class="card-head"><h2 data-i18n="mcTitle"></h2><button class="btn" id="runMc" data-i18n="run"></button></div>
+            <p class="hint" data-i18n="mcHint"></p>
+            <div class="chart-box"><canvas id="mcChart"></canvas></div>
+            <p class="hint" id="mcStatus"></p>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2 data-i18n="sensTitle"></h2><button class="btn" id="runSens" data-i18n="run"></button></div>
+            <p class="hint" data-i18n="sensHint"></p>
+            <div class="chart-box tall"><canvas id="sensChart"></canvas></div>
+            <p class="hint" id="sensStatus"></p>
+          </div>
+        </div>
+      </section>
+      <section class="tab" id="tab-missions" hidden>
+        <div class="missions" id="missions"></div>
+      </section>
+      <section class="tab" id="tab-model" hidden>
+        <div class="card prose" id="modelDoc"></div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <p><strong data-i18n="disclaimerTitle"></strong> <span data-i18n="disclaimer"></span></p>
+    <p data-i18n-html="helpline"></p>
+  </footer>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
