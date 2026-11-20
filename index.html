@@ -19,6 +19,7 @@
     </div>
     <div class="controls" role="toolbar" aria-label="Simulation controls">
       <label class="field"><span data-i18n="scenario"></span><select id="scenario"></select></label>
+      <label class="field" title="The year your policies start. Before it, the model replays history with no new policies (2018 → 2022 is calibrated to HILDA)."><span>Policies from</span><select id="policyYear"><option value="2018">2018</option><option value="2022">2022</option><option value="2026">2026 (today)</option></select></label>
       <div class="btn-group">
         <button id="play" class="btn primary" aria-label="Play">▶ <span data-i18n="play"></span></button>
         <button id="step" class="btn" data-i18n="step"></button>
@@ -29,7 +30,7 @@
         <summary class="btn">⚙ <span data-i18n="settings"></span></summary>
         <div class="menu-body">
           <label class="field"><span data-i18n="agents"></span><select id="agents"><option>500</option><option>1000</option><option>2000</option><option selected>3000</option><option>5000</option></select></label>
-          <label class="field"><span data-i18n="seed"></span><input id="seed" type="number" value="42" min="1" max="999999" /></label>
+          <label class="field"><span data-i18n="seed"></span><input id="seed" type="number" value="54" min="1" max="999999" /></label>
           <label class="field"><span data-i18n="network"></span><select id="network"><option value="smallworld">Neighbours + long-range ties</option><option value="grid">Neighbours only</option></select></label>
           <label class="field"><span data-i18n="compareWith"></span><select id="compare"><option value="">—</option></select></label>
           <div class="row"><button id="share" class="btn" data-i18n="share"></button><button id="csv" class="btn" data-i18n="csv"></button></div>
@@ -46,6 +47,7 @@
         <button class="btn small" id="toggleLevers" aria-expanded="true" data-i18n="hide"></button>
       </div>
       <p class="hint" data-i18n="leverHint"></p>
+      <p class="hint policy-note" id="policyNote" hidden></p>
       <div id="leverGroups"></div>
     </aside>
 
@@ -83,7 +85,10 @@
           <p class="hint">A wicked problem: government revenue vs. public-health responsibility vs. operators' commercial interests. The model does not assume governments avoid regulation because of revenue — it shows how the tension plays out over time.</p>
         </details>
       </section>
-      <section class="kpis" id="kpis" aria-live="polite"></section>
+      <details class="kpi-wrap" id="kpiWrap" open>
+        <summary><span class="kpi-title">Indicators</span><span class="kpi-mini" id="kpiMini"></span></summary>
+        <section class="kpis" id="kpis" aria-live="polite"></section>
+      </details>
       <section class="stage">
         <div class="canvas-wrap card">
           <div class="card-head">

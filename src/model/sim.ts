@@ -17,6 +17,8 @@ export interface SimOptions {
   params?: Partial<ParamValues>;
   network?: NetworkKind;
   burnIn?: boolean;
+  /** Month from which the chosen policy applies (0 = Jan 2018). Before it, history runs on the starting levers. */
+  policyStart?: number;
 }
 
 export interface SimEvent { month: number; kind: string; text: string }
@@ -106,6 +108,7 @@ export class Simulation {
   nbr: Int32Array;
   longLinks: Int32Array; // pairs of rewired long-range ties (for drawing)
   network: NetworkKind;
+  policyStart: number;
   private flow = { inflow: 0, outflow: 0, esc: 0, help: 0 };
 
   // SD stocks
@@ -126,6 +129,7 @@ export class Simulation {
     this.rand = mulberry32(opts.seed);
     this.levers = { ...opts.levers };
     this.network = opts.network ?? 'smallworld';
+    this.policyStart = Math.max(0, opts.policyStart ?? 0);
     const n = this.n;
     this.state = new Uint8Array(n);
     this.prev = new Uint8Array(n);
@@ -310,7 +314,8 @@ export class Simulation {
     const { s1, s2, s3 } = this.eff;
     const tau = this.burning ? 1 : this.P.policyDelay;
     const att = this.P.resistanceAttenuation * this.R;
-    const set = toNum(this.levers);
+    // before the policy start year, the system runs on its starting levers (history as it happened)
+    const set = !this.burning && this.month < this.policyStart ? this.initialEff : toNum(this.levers);
     for (const m of LEVER_META) {
       const k = m.key;
       if (k === 'startDependency') { s1[k] = s2[k] = s3[k] = set[k]; continue; }
@@ -654,6 +659,8 @@ export class Simulation {
       `At-risk gambling (low + moderate + high) is down 20% from 2018. Note how long it took: policy delays plus slow-moving social norms.`);
     this.once('up20', r.target > r0.target * 1.2, 'worse',
       `At-risk gambling is up 20% since 2018. The online wagering boom feeds the reinforcing loops: peer contagion and normalization.`);
+    if (this.policyStart > 0) this.once('policy', this.month === this.policyStart, 'hilda',
+      `January ${START_YEAR + this.policyStart / 12}: your policies start now. Until today the model replayed the status quo; from here changes phase in over ~9 months.`);
     this.once('hilda22', this.month === 48, 'hilda',
       `January 2022: the model says ${(r.target * 100).toFixed(1)}% of adults are at risk. HILDA measured 9.8% in 2022 (4.9% low, 3.1% moderate, 1.8% high).`);
     this.once('youngmen', r.youngMenAtRisk > 2 * r.othersAtRisk && this.month > 6, 'worse',

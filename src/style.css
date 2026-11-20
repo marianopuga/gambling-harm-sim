@@ -162,6 +162,14 @@ main { min-width: 0; display: grid; gap: 16px; align-content: start; }
   .menu-body { right: auto; left: 0; }
 }
 
+.policy-note { color: var(--warn); font-weight: 500; }
+.kpi-wrap > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 12px; padding: 2px 2px 8px; flex-wrap: wrap; }
+.kpi-wrap > summary::-webkit-details-marker { display: none; }
+.kpi-wrap > summary::before { content: '▸'; color: var(--muted); transition: transform .15s; display: inline-block; }
+.kpi-wrap[open] > summary::before { transform: rotate(90deg); }
+.kpi-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.kpi-mini { font: 500 12px 'JetBrains Mono', monospace; color: var(--muted); }
+.kpi-wrap[open] .kpi-mini { display: none; }
 .flag { font-size: 11px; font-weight: 600; color: var(--accent-ink); background: var(--accent); border-radius: 99px; padding: 1px 8px; vertical-align: 2px; margin-left: 4px; }
 .hero { display: grid; gap: 12px; }
 .hero-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }

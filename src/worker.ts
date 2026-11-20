@@ -4,11 +4,11 @@ import type { Levers } from './model/levers';
 import { monteCarlo, sensitivity } from './model/batch';
 
 export type ToWorker =
-  | { type: 'init'; n: number; seed: number; levers: Levers; network: NetworkKind }
+  | { type: 'init'; n: number; seed: number; levers: Levers; network: NetworkKind; policyStart: number }
   | { type: 'levers'; levers: Levers }
   | { type: 'step'; count: number }
-  | { type: 'mc'; initial: Levers; policy: Levers; seeds: number; months: number; n: number; network: NetworkKind }
-  | { type: 'sens'; initial: Levers; policy: Levers; months: number; n: number; network: NetworkKind };
+  | { type: 'mc'; initial: Levers; policy: Levers; seeds: number; months: number; n: number; network: NetworkKind; policyStart: number }
+  | { type: 'sens'; initial: Levers; policy: Levers; months: number; n: number; network: NetworkKind; policyStart: number };
 
 let sim: Simulation | null = null;
 let rowsSent = 0, eventsSent = 0;
@@ -18,7 +18,7 @@ ctx.onmessage = (ev: MessageEvent<ToWorker>) => {
   const m = ev.data;
   switch (m.type) {
     case 'init': {
-      sim = new Simulation({ n: m.n, seed: m.seed, levers: m.levers, network: m.network });
+      sim = new Simulation({ n: m.n, seed: m.seed, levers: m.levers, network: m.network, policyStart: m.policyStart });
       rowsSent = sim.history.length; eventsSent = 0;
       ctx.postMessage({
         type: 'ready', n: sim.n, px: sim.px, py: sim.py, region: sim.region, scale: sim.scale,
@@ -43,7 +43,7 @@ ctx.onmessage = (ev: MessageEvent<ToWorker>) => {
       break;
     }
     case 'sens': {
-      const res = sensitivity(m.initial, m.policy, { months: m.months, n: m.n, seeds: 5, network: m.network },
+      const res = sensitivity(m.initial, m.policy, { months: m.months, n: m.n, seeds: 5, network: m.network, policyStart: m.policyStart },
         (done, total) => ctx.postMessage({ type: 'progress', job: 'sens', done, total }));
       ctx.postMessage({ type: 'sensResult', result: res });
       break;

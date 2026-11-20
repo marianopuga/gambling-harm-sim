@@ -1,8 +1,8 @@
 import { DEFAULT_LEVERS, type Levers, type Scenario } from '../model/levers';
 
 export const SCENARIOS: Scenario[] = [
-  { id: 'status-quo', name: 'Australia today (status quo)',
-    description: 'Calibrated to HILDA 2018 (7.3% at risk). The online and sports-betting boom grows until ~2023; existing rules, little early support. Warning labels only.', levers: {} },
+  { id: 'status-quo', name: 'Status quo (no new policies)',
+    description: 'Calibrated to HILDA 2018 (7.3% at risk) and 2022 (9.8%). The online and sports-betting boom grows until ~2023; existing rules, little early support, warning labels only.', levers: {} },
   { id: 'liberalization', name: 'Boom unchecked',
     description: 'Even more sports-betting sponsorship, in-play and micro-betting, more venues and online access.',
     levers: { availability: 70, marketing: 85, innovation: 85, acceptance: 70, enforcement: 25 } },

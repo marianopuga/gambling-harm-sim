@@ -5,7 +5,7 @@ export const STRINGS = {
     scenario: 'Scenario', play: 'Play', pause: 'Pause', step: 'Step', reset: 'Reset', speed: 'Speed', settings: 'Settings',
     agents: 'Agents', seed: 'Seed', network: 'Network', compareWith: 'Compare with', share: 'Copy link', csv: 'Export CSV', theme: 'Toggle theme',
     levers: 'Levers', hide: 'Hide', show: 'Show',
-    leverHint: 'Every run starts in January 2018 (HILDA: 7.3% of adults at risk). Changes phase in through ~9-month implementation delays, and political resistance can water down harm-reducing reforms.',
+    leverHint: 'Every run starts in January 2018 (HILDA: 7.3% of adults at risk). Policies apply from the year chosen in “Policies from”. Changes phase in through ~9-month implementation delays, and political resistance can water down harm-reducing reforms.',
     population: 'Population', ovSud: 'Alcohol/drug disorder ring', ovIllegal: 'Offshore operator (hollow)', ovLinks: 'Long-range social ties',
     why: 'Why did that happen?', noEvents: 'Press Play. Notable events will be explained here as they emerge.',
     tabCharts: 'Charts', tabCld: 'Causal loops', tabAnalysis: 'Uncertainty & sensitivity', tabMissions: 'Missions', tabModel: 'Model & sources',

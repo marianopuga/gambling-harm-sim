@@ -23,13 +23,13 @@ export const PARAMS = {
   burnInMonths: p(120, 'months', [60, 240], 'Modelling choice', 'high'),
   horizonMonths: p(240, 'months', [120, 360], 'Modelling choice', 'high'),
   adultPopulation: p(20_800_000, 'adults', [19e6, 22e6], 'ABS: Australian adults 18+, ~2018-2022', 'high'),
-  trendPerYear: p(9, 'lever points / year', [0, 20], 'Calibrated: HILDA at-risk 7.3% (2018) → 9.8% (2022) — the online/sports-betting boom', 'medium'),
+  trendPerYear: p(10, 'lever points / year', [0, 20], 'Calibrated: HILDA at-risk 7.3% (2018) → 9.8% (2022) — the online/sports-betting boom', 'medium'),
   trendYears: p(5, 'years', [4, 20], 'ASSUMPTION: the boom grows until ~2023, then plateaus', 'low'),
 
   // ---------- Base monthly hazards (status quo) ----------
   h_NG_NR: p(0.011, '1/month', [0.005, 0.02], CAL + '; ~66% past-year gamblers', 'medium'),
   h_NR_NG: p(0.006, '1/month', [0.003, 0.012], CAL, 'medium'),
-  h_NR_LR: p(0.0052, '1/month', [0.003, 0.012], CAL, 'medium'),
+  h_NR_LR: p(0.0049, '1/month', [0.003, 0.012], CAL, 'medium'),
   h_LR_NR: p(0.055, '1/month', [0.03, 0.08], 'ANU 2023: >60% of low-risk move down/stop by next wave', 'medium'),
   h_LR_NG: p(0.006, '1/month', [0.003, 0.012], CAL, 'low'),
   h_LR_MR: p(0.023, '1/month', [0.008, 0.03], CAL, 'medium'),

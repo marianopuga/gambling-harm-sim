@@ -25,13 +25,16 @@ const state = {
   scenario: 'status-quo',
   levers: { ...DEFAULT_LEVERS } as Levers,
   start: { ...DEFAULT_LEVERS } as Levers,
-  seed: 42, n: 3000, network: 'smallworld' as 'smallworld' | 'grid',
+  // seed 54 tracks HILDA closely (7.4% → 9.9%); see scripts/seeds.ts
+  seed: 54, n: 3000, network: 'smallworld' as 'smallworld' | 'grid',
+  policyYear: 2018,
   history: [] as Row[], events: [] as SimEvent[],
   compare: '' as string, historyB: [] as Row[],
   playing: false, awaiting: false, awaitingB: false, acc: 0, speed: 3,
   mission: null as Mission | null,
 };
 
+const policyStart = () => (state.policyYear - 2018) * 12;
 const startFor = (policy: Levers): Levers => {
   const s = { ...DEFAULT_LEVERS };
   for (const k of STRUCTURAL) (s as unknown as Record<string, unknown>)[k] = policy[k];
@@ -47,12 +50,13 @@ function loadHash() {
     state.levers = { ...scenarioLevers(state.scenario), ...(o.l ?? {}) };
     if (Number.isFinite(o.s)) state.seed = o.s; if ([500, 1000, 2000, 3000, 5000].includes(o.n)) state.n = o.n;
     if (o.net === 'grid' || o.net === 'smallworld') state.network = o.net;
+    if ([2018, 2022, 2026].includes(o.py)) state.policyYear = o.py;
   } catch { /* ignore malformed links */ }
 }
 function shareLink(): string {
   const base = scenarioLevers(state.scenario); const diff: Partial<Levers> = {};
   for (const k of Object.keys(state.levers) as (keyof Levers)[]) if (state.levers[k] !== base[k]) (diff as Record<string, unknown>)[k] = state.levers[k];
-  const enc = btoa(unescape(encodeURIComponent(JSON.stringify({ sc: state.scenario, l: diff, s: state.seed, n: state.n, net: state.network }))));
+  const enc = btoa(unescape(encodeURIComponent(JSON.stringify({ sc: state.scenario, l: diff, s: state.seed, n: state.n, net: state.network, py: state.policyYear }))));
   return `${location.origin}${location.pathname}#${enc}`;
 }
 
@@ -93,8 +97,11 @@ function reset() {
   setPlaying(false);
   state.start = startFor(state.levers);
   state.awaiting = true;
-  post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.start, network: state.network });
+  post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.start, network: state.network, policyStart: policyStart() });
   panel.set(state.levers, state.start);
+  const note = $('policyNote');
+  note.hidden = state.policyYear === 2018;
+  note.textContent = `Policies apply from January ${state.policyYear}. Until then the model replays history (status quo, calibrated to HILDA). Set your levers now — they switch on in ${state.policyYear}.`;
   resetCompare();
   renderEvents();
 }
@@ -110,7 +117,7 @@ function resetCompare() {
     else if (m.type === 'tick') { state.historyB.push(...m.rows); state.awaitingB = false; }
   };
   state.awaitingB = true;
-  post(wB, { type: 'init', n: state.n, seed: state.seed, levers: startFor(policyB), network: state.network });
+  post(wB, { type: 'init', n: state.n, seed: state.seed, levers: startFor(policyB), network: state.network, policyStart: policyStart() });
 }
 
 function setPlaying(p: boolean) {
@@ -149,6 +156,7 @@ function renderKpis() {
     const arrow = x.dir === undefined || Math.abs(x.dir) < 1e-9 ? '' : `<span class="${x.dir > 0 ? 'up' : 'down'}">${x.dir > 0 ? '▲' : '▼'}</span>`;
     return `<div class="kpi ${x.cls ?? ''}"><div class="k">${x.k}</div><div class="v">${x.v} ${arrow}</div><div class="d">${x.d}${state.compare && x.bv ? ` · <b>B:</b> ${x.bv}` : ''}</div></div>`;
   }).join('');
+  $('kpiMini').textContent = `at risk ${fmtPct(r.target, 1)} · men 18-34 ${fmtPct(r.youngMenAtRisk, 1)} · social cost ${fmtMoney(r.socialCost * 12)} · tax ${fmtMoney(r.tax * 12)} · resistance ${fmtPct(r.resistance, 0)}`;
   const yr = 2018 + Math.floor(r.month / 12), mo = r.month % 12;
   $('month').textContent = `${MONTHS[mo]} ${yr} · ${t('month')} ${r.month}/${HORIZON}`;
   $('year').textContent = String(yr);
@@ -256,6 +264,7 @@ function drawCharts() {
   const markers = state.events.map((e) => e.month);
   for (const c of charts) {
     c.chart.opts.markers = markers;
+    c.chart.opts.vline = state.policyYear > 2018 ? { x: policyStart(), label: `policies from ${state.policyYear}` } : undefined;
     const s = c.series();
     c.chart.draw(s, months);
     const leg = s.map((x) => `<span><i style="background:${x.color}"></i>${x.label}</span>`).join('');
@@ -277,9 +286,10 @@ function renderMissions() {
     const m = MISSIONS.find((x) => x.id === b.dataset.mission)!;
     if (state.mission?.id === m.id) { state.mission = null; panel.lock(undefined); renderMissions(); return; }
     state.mission = m; state.scenario = m.scenario; $<HTMLSelectElement>('scenario').value = m.scenario;
+    state.policyYear = 2018; $<HTMLSelectElement>('policyYear').value = '2018'; // missions are scored from 2018
     state.levers = scenarioLevers(m.scenario);
     // missions start *in* the scenario: its levers are the starting point
-    reset(); state.start = { ...state.levers }; post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.levers, network: state.network });
+    reset(); state.start = { ...state.levers }; post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.levers, network: state.network, policyStart: 0 });
     panel.set(state.levers, state.start); panel.lock(m.allowed); renderMissions();
   }));
 }
@@ -343,6 +353,11 @@ function init() {
     state.mission = null; panel.lock(undefined); reset(); renderMissions();
   });
   cmp.addEventListener('change', () => { state.compare = cmp.value; reset(); });
+  const py = $<HTMLSelectElement>('policyYear'); py.value = String(state.policyYear);
+  py.addEventListener('change', () => { state.policyYear = Number(py.value); if (state.mission) { state.mission = null; panel.lock(undefined); renderMissions(); } reset(); });
+  const kw = $<HTMLDetailsElement>('kpiWrap');
+  try { if (localStorage.getItem('kpiOpen') === '0') kw.open = false; } catch { /* ignore */ }
+  kw.addEventListener('toggle', () => { try { localStorage.setItem('kpiOpen', kw.open ? '1' : '0'); } catch { /* ignore */ } });
   $<HTMLSelectElement>('agents').value = String(state.n);
   $<HTMLInputElement>('seed').value = String(state.seed);
   $<HTMLSelectElement>('network').value = state.network;
@@ -383,8 +398,8 @@ function init() {
     if (b.dataset.tab === 'missions') renderMissions();
     if (b.dataset.tab === 'analysis') { drawMc(); drawSens(); }
   }));
-  $('runMc').addEventListener('click', () => { $('mcStatus').textContent = t('running'); post(analysisWorker(), { type: 'mc', initial: state.start, policy: state.levers, seeds: 20, months: HORIZON, n: 1500, network: state.network }); });
-  $('runSens').addEventListener('click', () => { $('sensStatus').textContent = t('running'); post(analysisWorker(), { type: 'sens', initial: state.start, policy: state.levers, months: 120, n: 1500, network: state.network }); });
+  $('runMc').addEventListener('click', () => { $('mcStatus').textContent = t('running'); post(analysisWorker(), { type: 'mc', initial: state.start, policy: state.levers, seeds: 20, months: HORIZON, n: 1500, network: state.network, policyStart: policyStart() }); });
+  $('runSens').addEventListener('click', () => { $('sensStatus').textContent = t('running'); post(analysisWorker(), { type: 'sens', initial: state.start, policy: state.levers, months: 120, n: 1500, network: state.network, policyStart: policyStart() }); });
   // legend
   $('legend').innerHTML = ['Not gambling', 'No risk', 'Low risk', 'Moderate', 'High risk', 'In treatment', 'Recovered']
     .map((l, k) => `<span><i style="background:var(--s${k})"></i>${l}</span>`).join('');

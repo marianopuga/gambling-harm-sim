@@ -3,7 +3,7 @@ import { DEFAULT_LEVERS } from '../src/model/levers';
 // usage: tsx scripts/hilda.ts key=value ...   (param overrides)
 const params: Record<string, number> = {};
 for (const a of process.argv.slice(2)) { const [k, v] = a.split('='); params[k] = Number(v); }
-const seeds = [1, 2, 3], at = [0, 48, 144, 240];
+const seeds = [1, 2, 3, 4, 5, 6], at = [0, 48, 144, 240];
 const acc = at.map(() => ({ lr: 0, mr: 0, pg: 0, tx: 0, g: 0, ym: 0, oth: 0, share: 0, dep: 0, tax: 0, cost: 0, ggr: 0 }));
 for (const seed of seeds) {
   const sim = new Simulation({ n: 4000, seed, levers: DEFAULT_LEVERS, params });

@@ -10,6 +10,7 @@ export interface ChartOpts {
   band?: { lo: number[]; hi: number[]; color: string };
   markers?: number[]; // x positions (months) of events
   points?: { x: number; y: number; label: string }[]; // reference observations (e.g. HILDA waves)
+  vline?: { x: number; label: string }; // e.g. the month policies start
   xLabel?: (m: number) => string;
 }
 
@@ -66,6 +67,12 @@ export class LineChart {
     for (let m = 0; m <= xMax; m += yearStep) { ctx.textAlign = X(m) > w - padR - 14 ? 'right' : 'center'; ctx.fillText(o.xLabel ? o.xLabel(m) : String(2018 + Math.floor(m / 12)), Math.min(X(m), w - 2), h - padB + 6); }
     // event markers
     if (o.markers) { ctx.strokeStyle = cssVar('--warn'); ctx.globalAlpha = .35; ctx.setLineDash([2, 3]); for (const m of o.markers) { ctx.beginPath(); ctx.moveTo(X(m), padT); ctx.lineTo(X(m), padT + ph); ctx.stroke(); } ctx.setLineDash([]); ctx.globalAlpha = 1; }
+    // policy start line
+    if (o.vline && o.vline.x > 0 && o.vline.x <= xMax) {
+      const x = X(o.vline.x); ctx.strokeStyle = cssVar('--accent'); ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ph); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = cssVar('--accent'); ctx.font = '600 11px Inter, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(o.vline.label, x + 4, padT + 2);
+    }
     // band
     if (o.band) {
       ctx.fillStyle = o.band.color; ctx.globalAlpha = .22; ctx.beginPath();

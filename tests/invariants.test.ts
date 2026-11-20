@@ -95,3 +95,17 @@ describe('scenario presets', () => {
     expect(get('integrated').target).toBeLessThan(sq.target);
   }, 120_000);
 });
+
+describe('policy start year', () => {
+  it('replays the status quo until the policy year, then the policy takes effect', () => {
+    const policy = { ...DEFAULT_LEVERS, adBan: 2 as const, marketing: 20 };
+    const mk = (policyStart: number) => { const s = new Simulation({ n: 1500, seed: 9, levers: DEFAULT_LEVERS, policyStart }); s.setLevers(policy); for (let t = 0; t < 200; t++) s.step(); return s; };
+    const sq = new Simulation({ n: 1500, seed: 9, levers: DEFAULT_LEVERS }); for (let t = 0; t < 200; t++) sq.step();
+    const late = mk(96), early = mk(0);
+    // identical to the status quo before 2026 (same seed, same levers)
+    expect(late.history.slice(0, 96).map((r) => r.target)).toEqual(sq.history.slice(0, 96).map((r) => r.target));
+    const end = (s: Simulation) => s.history.slice(-12).reduce((a, r) => a + r.target, 0) / 12;
+    expect(end(late)).toBeLessThan(end(sq));
+    expect(end(early)).toBeLessThan(end(late)); // acting earlier helps more
+  }, 30_000);
+});

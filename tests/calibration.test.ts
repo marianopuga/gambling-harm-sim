@@ -23,7 +23,7 @@ describe('Australian calibration (status quo, averaged over seeds)', () => {
     console.log({ low: lr.toFixed(4), moderate: mr.toFixed(4), high: pg.toFixed(4), atRisk2022: risk22.toFixed(4), gamblers: gam.toFixed(3), atRiskRevenueShare: share.toFixed(3), dependency: dep.toFixed(4), costToTax: (cost / tax).toFixed(1) });
     const within = (v: number, target: number, tol: number) => { expect(v).toBeGreaterThan(target * (1 - tol)); expect(v).toBeLessThan(target * (1 + tol)); };
     within(lr, T.low, 0.25); within(mr, T.moderate, 0.25); within(pg, T.problem, 0.3);
-    within(risk22, T.atRisk2022, 0.15);
+    within(risk22, T.atRisk2022, 0.07);
     within(gam, T.gamblers, 0.12);
     expect(share).toBeGreaterThan(T.atRiskRevenueShare[0]); expect(share).toBeLessThan(T.atRiskRevenueShare[1]);
     within(dep, T.dependency, 0.1);

@@ -5,11 +5,11 @@ import { Simulation, type NetworkKind } from './sim';
 export interface MCResult { months: number[]; p5: number[]; p50: number[]; p95: number[]; finalMean: number }
 
 /** Run a policy from the same initial conditions with K seeds; returns 5/50/95 percentile bands of the target metric. */
-export function monteCarlo(initial: Levers, policy: Levers, opts: { seeds: number; months: number; n: number; network: NetworkKind; params?: Partial<ParamValues> },
+export function monteCarlo(initial: Levers, policy: Levers, opts: { seeds: number; months: number; n: number; network: NetworkKind; params?: Partial<ParamValues>; policyStart?: number },
   progress?: (done: number) => void): MCResult {
   const series: number[][] = [];
   for (let k = 0; k < opts.seeds; k++) {
-    const sim = new Simulation({ n: opts.n, seed: 1000 + k, levers: initial, network: opts.network, params: opts.params });
+    const sim = new Simulation({ n: opts.n, seed: 1000 + k, levers: initial, network: opts.network, params: opts.params, policyStart: opts.policyStart });
     sim.setLevers(policy);
     for (let t = 0; t < opts.months; t++) sim.step();
     series.push(sim.history.map((r) => r.target));
@@ -33,12 +33,12 @@ export const SENSITIVITY_KEYS: ParamKey[] = [
 export interface SensRow { key: ParamKey; label: string; low: number; high: number; base: number }
 
 /** One-at-a-time ±25% perturbation; outcome = mean target over the last 12 months. */
-export function sensitivity(initial: Levers, policy: Levers, opts: { months: number; n: number; seeds: number; network: NetworkKind },
+export function sensitivity(initial: Levers, policy: Levers, opts: { months: number; n: number; seeds: number; network: NetworkKind; policyStart?: number },
   progress?: (done: number, total: number) => void): SensRow[] {
   const run = (params: Partial<ParamValues>) => {
     let s = 0;
     for (let k = 0; k < opts.seeds; k++) {
-      const sim = new Simulation({ n: opts.n, seed: 500 + k, levers: initial, network: opts.network, params });
+      const sim = new Simulation({ n: opts.n, seed: 500 + k, levers: initial, network: opts.network, params, policyStart: opts.policyStart });
       sim.setLevers(policy);
       for (let t = 0; t < opts.months; t++) sim.step();
       const tail = sim.history.slice(-12);

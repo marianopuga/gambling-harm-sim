@@ -10,6 +10,9 @@ The prevalence of at-risk gambling among Australian adults increased from **7.3%
 2. **Reduce severity** for those already at moderate/high risk — mandatory loss limits, affordability checks (licensed channels only).
 3. **Prevent people becoming at risk at all** — the tobacco playbook: advertising bans, age verification.
 
+## Policies from 2018, 2022 or 2026
+The run always starts in January 2018. **Policies from** (top bar) sets when your levers switch on. Default 2018 asks *what if we had acted in 2018?*. With 2022 or 2026 the model first replays history (status quo, calibrated to HILDA) and your policies start that January — *what if we act now?* A dashed line on every chart marks the switch. The default seed (54) tracks HILDA closely (7.5% → 9.8%); averaged over seeds the model gives 7.2% → 9.8%.
+
 ## What you see
 - **The stock panel**: live inflow and outflow, the stock split into low/moderate/high, and the three goals measured against 2018.
 - **Map of Australia**: each dot ≈ 7,000 adults placed where Australians live; dots light up and turn orange/red as people move into risk, and a heat map shows where at-risk gambling concentrates. Each state shows its live at-risk share (pokies density differs by state).
@@ -54,8 +57,8 @@ R1 Peer contagion · R2 Normalization · R3 Fiscal capture · R4 Lobbying · R5 
 ### Calibration (status quo, tested in `tests/calibration.test.ts`)
 | Target | Model | Source |
 |---|---|---|
-| 2018: low 3.7%, moderate 2.5%, high 1.1% (7.3%) | ≈ 3.8 / 2.6 / 1.2 (7.5%) | HILDA via AIHW (Wilkins et al. 2024) |
-| 2022: 9.8% at risk | ≈ 9.1% | idem |
+| 2018: low 3.7%, moderate 2.5%, high 1.1% (7.3%) | ≈ 3.6 / 2.5 / 1.1 (7.2%) | HILDA via AIHW (Wilkins et al. 2024) |
+| 2022: low 4.9%, moderate 3.1%, high 1.8% (9.8%) | ≈ 4.6 / 3.5 / 1.7 (9.8%) | idem |
 | Gambling losses ≈ $25bn/yr (2018) | ≈ $25bn | QGSO Australian Gambling Statistics |
 | Gambling tax ≈ $7-10bn/yr, ~7.5% of state tax | ≈ $7bn → $11bn, 7.5% | IBISWorld; state budgets |
 | Social cost ≫ tax | ≈ $40-50bn/yr (≈ 5× tax) | Victoria 2023 social-cost study ($14.1bn), scaled |
