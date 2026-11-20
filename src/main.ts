@@ -30,7 +30,8 @@ const state = {
   policyYear: 2018,
   history: [] as Row[], events: [] as SimEvent[],
   compare: '' as string, historyB: [] as Row[],
-  playing: false, awaiting: false, awaitingB: false, acc: 0, speed: 3,
+  historyS: [] as Row[], // hidden "as is" run: same seed, starting levers, no changes
+  playing: false, awaiting: false, awaitingB: false, awaitingS: false, acc: 0, speed: 3,
   mission: null as Mission | null,
 };
 
@@ -68,6 +69,7 @@ function shareLink(): string {
 const mkWorker = () => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 const wA = mkWorker();
 let wB: Worker | null = null;
+let wS: Worker | null = null;
 let wX: Worker | null = null;
 const post = (w: Worker, m: ToWorker) => w.postMessage(m);
 
@@ -107,7 +109,21 @@ function reset() {
   note.hidden = state.policyYear === 2018;
   note.textContent = `The run opens in January ${state.policyYear}: 2018–${state.policyYear - 1} has already happened (status quo, calibrated to HILDA). Your levers act from now on, and changes are measured against ${state.policyYear}.`;
   resetCompare();
+  resetShadow();
   renderEvents();
+}
+
+/** The "as is" baseline: identical start and seed, but the levers never move. Differences = the impact of your changes. */
+function resetShadow() {
+  wS?.terminate(); state.historyS = [];
+  wS = mkWorker();
+  wS.onmessage = (ev) => {
+    const m = ev.data;
+    if (m.type === 'ready') { state.historyS = m.history; state.awaitingS = false; }
+    else if (m.type === 'tick') { state.historyS.push(...m.rows); state.awaitingS = false; renderHero(); }
+  };
+  state.awaitingS = true;
+  post(wS, { type: 'init', n: state.n, seed: state.seed, levers: state.start, network: state.network, policyStart: policyStart() });
 }
 
 function resetCompare() {
@@ -133,6 +149,7 @@ function stepOnce(count = 1) {
   if (state.awaiting) return;
   state.awaiting = true; post(wA, { type: 'step', count });
   if (wB && !state.awaitingB && state.historyB.length < state.history.length + count + 1) { state.awaitingB = true; post(wB, { type: 'step', count }); }
+  if (wS && !state.awaitingS && state.historyS.length < state.history.length + count + 1) { state.awaitingS = true; post(wS, { type: 'step', count }); }
 }
 
 // ---------------------------------------------------------------- KPIs
@@ -185,16 +202,36 @@ function renderHero() {
   const parts = [[r.counts[2], 2, 'low'], [r.counts[3], 3, 'moderate'], [r.counts[4] + r.counts[5], 4, 'high']] as const;
   $('sfBars').innerHTML = parts.map(([v, c, l]) => `<i style="width:${(v / Math.max(1e-9, r.target)) * 100}%;background:var(--s${c})" title="${l}: ${fmtPct(v, 1)}"></i>`).join('');
   $('sfEsc').innerHTML = last.length ? `<span><i class="dot" style="background:var(--s2)"></i>low <b>${fmtPct(r.counts[2], 1)}</b></span><span><i class="dot" style="background:var(--s3)"></i>moderate <b>${fmtPct(r.counts[3], 1)}</b></span><span><i class="dot" style="background:var(--s4)"></i>high <b>${fmtPct(r.counts[4] + r.counts[5], 1)}</b></span><span>↑ escalating <b>${fmtPeople(fesc)}</b>/yr</span><span>→ starting treatment <b>${fmtPeople(fhelp)}</b>/yr</span>` : '';
-  const g = (name: string, title: string, now: number, b0: number, fmt: (v: number) => string, what: string) => {
-    const d = b0 > 0 && base.length >= 6 ? now / b0 - 1 : NaN;
-    const cls = !Number.isFinite(d) ? '' : d < -0.05 ? 'good' : d > 0.05 ? 'bad' : '';
-    const dv = Number.isFinite(d) ? (r.month === r0.month ? `start of ${by}` : `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}% vs ${by}`) : 'baseline…';
-    return `<div class="goal"><span class="gk">${name}</span><span class="gt">${title}</span><span class="gv ${cls}">${fmt(now)} · ${dv}</span><span class="gd">${what}</span></div>`;
+  // impact of your changes: compare with the "as is" run over the same months
+  const changed = JSON.stringify(state.levers) !== JSON.stringify(state.start);
+  const hs = state.historyS.slice(0, h.length), rs = hs[hs.length - 1];
+  const hasS = changed && !!rs && rs.month === r.month;
+  const lastS = hasS ? hs.slice(-12).filter((x) => x.month > 0) : [];
+  const imp = $('sfImpact');
+  if (!changed) imp.innerHTML = `<span class="muted">As is — move a lever or pick a scenario to see its impact here.</span>`;
+  else if (!hasS) imp.innerHTML = `<span class="muted">Comparing with "as is"…</span>`;
+  else {
+    const dp = r.target - rs.target, people = dp * ADULTS;
+    const cls = dp < -0.0005 ? 'good' : dp > 0.0005 ? 'bad' : '';
+    imp.innerHTML = `<span>As is: <b>${fmtPct(rs.target, 1)}</b></span><span>Your policies: <b>${fmtPct(r.target, 1)}</b></span><span class="${cls}"><b>${Math.abs(dp) < 0.0005 ? 'no difference yet' : `${fmtPeople(Math.abs(people))} ${dp < 0 ? 'fewer' : 'more'} adults at risk`}</b></span>`;
+  }
+  const g = (name: string, title: string, now: number, asIs: number, b0: number, fmt: (v: number) => string, what: string) => {
+    const pct = (a: number, b: number) => (b > 0 ? a / b - 1 : NaN);
+    const sign = (d: number) => `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}%`;
+    const tone = (d: number) => (!Number.isFinite(d) ? '' : d < -0.03 ? 'good' : d > 0.03 ? 'bad' : '');
+    let impact: string;
+    if (!changed) impact = `<span class="gi muted">as is (no changes)</span>`;
+    else if (!hasS || !lastS.length) impact = `<span class="gi muted">comparing…</span>`;
+    else { const d = pct(now, asIs); impact = `<span class="gi ${tone(d)}">${Math.abs(d) < 0.005 ? 'same as "as is" so far' : `${sign(d)} vs as is (${fmt(asIs)})`}</span>`; }
+    const dy = base.length >= 6 ? pct(now, b0) : NaN;
+    const hist = Number.isFinite(dy) ? (r.month === r0.month ? `start of ${by}` : `${sign(dy)} vs ${by}`) : 'baseline…';
+    return `<div class="goal"><span class="gk">${name}</span><span class="gt">${title}</span><span class="gv">${fmt(now)}</span>${impact}<span class="gd">${what} · ${hist}</span></div>`;
   };
+  const sev = (x: Row) => x.modHigh / Math.max(1e-9, x.target);
   $('goals').innerHTML = [
-    g('Goal 1', 'Prevent escalation', fesc, mean(base, (x) => x.escalations), (v) => `${fmtPeople(v)}/yr`, 'people moving low → moderate → high'),
-    g('Goal 2', 'Reduce severity', r.modHigh / Math.max(1e-9, r.target), r0.modHigh / Math.max(1e-9, r0.target), (v) => `${(v * 100).toFixed(0)}% of at-risk`, 'share of at-risk people at moderate or high risk'),
-    g('Goal 3', 'Prevent people becoming at risk', fin, mean(base, (x) => x.inflow), (v) => `${fmtPeople(v)}/yr`, 'new at-risk adults per year (the inflow)'),
+    g('Goal 1', 'Prevent escalation', fesc, mean(lastS, (x) => x.escalations), mean(base, (x) => x.escalations), (v) => `${fmtPeople(v)}/yr`, 'people moving low → moderate → high'),
+    g('Goal 2', 'Reduce severity', sev(r), rs ? sev(rs) : NaN, sev(r0), (v) => `${(v * 100).toFixed(0)}% of at-risk`, 'share at moderate or high risk'),
+    g('Goal 3', 'Prevent people becoming at risk', fin, mean(lastS, (x) => x.inflow), mean(base, (x) => x.inflow), (v) => `${fmtPeople(v)}/yr`, 'new at-risk adults per year'),
   ].join('');
 }
 
@@ -293,7 +330,7 @@ function renderMissions() {
     state.policyYear = 2018; $<HTMLSelectElement>('policyYear').value = '2018'; // missions are scored from 2018
     state.levers = scenarioLevers(m.scenario);
     // missions start *in* the scenario: its levers are the starting point
-    reset(); state.start = { ...state.levers }; post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.levers, network: state.network, policyStart: 0 });
+    reset(); state.start = { ...state.levers }; post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.levers, network: state.network, policyStart: 0 }); resetShadow();
     panel.set(state.levers, state.start); panel.lock(m.allowed); renderMissions();
   }));
 }

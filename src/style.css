@@ -170,6 +170,11 @@ main { min-width: 0; display: grid; gap: 16px; align-content: start; }
 .kpi-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
 .kpi-mini { font: 500 12px 'JetBrains Mono', monospace; color: var(--muted); }
 .kpi-wrap[open] .kpi-mini { display: none; }
+.sf-impact { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.sf-impact b { font-family: 'JetBrains Mono', monospace; }
+.sf-impact .good, .goal .gi.good { color: var(--good); } .sf-impact .bad, .goal .gi.bad { color: var(--bad); }
+.sf-impact .muted, .goal .gi.muted { color: var(--muted); font-weight: 400; }
+.goal .gi { font: 600 12.5px 'JetBrains Mono', monospace; }
 .flag { font-size: 11px; font-weight: 600; color: var(--accent-ink); background: var(--accent); border-radius: 99px; padding: 1px 8px; vertical-align: 2px; margin-left: 4px; }
 .hero { display: grid; gap: 12px; }
 .hero-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
