@@ -21,7 +21,7 @@ ctx.onmessage = (ev: MessageEvent<ToWorker>) => {
       sim = new Simulation({ n: m.n, seed: m.seed, levers: m.levers, network: m.network });
       rowsSent = sim.history.length; eventsSent = 0;
       ctx.postMessage({
-        type: 'ready', n: sim.n, cols: sim.cols, rows: sim.rows, scale: sim.scale,
+        type: 'ready', n: sim.n, px: sim.px, py: sim.py, region: sim.region, scale: sim.scale,
         longLinks: sim.longLinks, nbrStart: sim.nbrStart, nbr: sim.nbr,
         history: sim.history, buffer: sim.renderBuffer(),
       });

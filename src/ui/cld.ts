@@ -11,7 +11,7 @@ const N: Node[] = [
   { id: 'L_inno', label: 'Product innovation', x: 90, y: 150, kind: 'lever' },
   { id: 'L_avail', label: 'Availability', x: 90, y: 230, kind: 'lever' },
   { id: 'L_press', label: 'Social pressure', x: 90, y: 310, kind: 'lever' },
-  { id: 'L_sup', label: 'State support / levy', x: 90, y: 400, kind: 'lever' },
+  { id: 'L_sup', label: 'Early detection & support', x: 90, y: 400, kind: 'lever' },
   { id: 'L_tax', label: 'Tax rate', x: 90, y: 490, kind: 'lever' },
   { id: 'L_enf', label: 'Enforcement', x: 90, y: 580, kind: 'lever' },
   { id: 'L_reg', label: 'Limits, bans, self-exclusion', x: 960, y: 640, kind: 'lever' },
@@ -20,9 +20,9 @@ const N: Node[] = [
   { id: 'INT', label: 'Betting intensity', x: 310, y: 190, kind: 'var' },
   { id: 'PART', label: 'Participation', x: 520, y: 230, kind: 'var', value: (r) => 1 - r.counts[0] - r.counts[5] - r.counts[6] },
   { id: 'CONT', label: 'Peer contagion', x: 520, y: 330, kind: 'var' },
-  { id: 'ESC', label: 'Moderate + problem risk', x: 740, y: 190, kind: 'stock', value: (r) => r.target },
+  { id: 'ESC', label: 'At-risk gamblers', x: 740, y: 190, kind: 'stock', value: (r) => r.target },
   { id: 'SUD', label: 'Alcohol / drug disorder', x: 960, y: 80, kind: 'stock', value: (r) => r.sudAmongPG },
-  { id: 'HARM', label: 'Harm & affected others', x: 960, y: 230, kind: 'var', value: (r) => r.harm },
+  { id: 'HARM', label: 'Harm & social cost', x: 960, y: 230, kind: 'var', value: (r) => r.socialCost },
   { id: 'AWARE', label: 'Public awareness', x: 960, y: 370, kind: 'stock', value: (r) => r.awareness },
   { id: 'HELP', label: 'Help-seeking & treatment', x: 740, y: 340, kind: 'stock', value: (r) => r.capacity },
   { id: 'GGR', label: 'Legal GGR', x: 520, y: 440, kind: 'var', value: (r) => r.ggrLegal },
@@ -66,7 +66,7 @@ export const LOOPS: Loop[] = [
 
 const LEVER_NODE: Partial<Record<keyof Levers, string>> = {
   marketing: 'L_mkt', adBan: 'L_mkt', innovation: 'L_inno', inPlayBan: 'L_reg', availability: 'L_avail', socialPressure: 'L_press',
-  support: 'L_sup', levy: 'L_sup', integratedServices: 'L_sup', taxRate: 'L_tax', enforcement: 'L_enf', earmarking: 'L_ear',
+  support: 'L_sup', levy: 'L_sup', integratedServices: 'L_sup', earlyDetection: 'L_sup', taxRate: 'L_tax', enforcement: 'L_enf', earmarking: 'L_ear',
   stakeLimits: 'L_reg', depositLimits: 'L_reg', affordability: 'L_reg', selfExclusion: 'L_reg', ageVerification: 'L_reg', prohibition: 'L_reg',
   acceptance: 'ACC', alcohol: 'SUD', drugs: 'SUD', startDependency: 'DEP',
 };

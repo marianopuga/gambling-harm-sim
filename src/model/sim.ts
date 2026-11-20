@@ -1,6 +1,7 @@
 import { defaultParamValues, type ParamValues } from '../params';
 import { DEFAULT_LEVERS, LEVER_META, type Levers } from './levers';
 import { clamp, hazardToProb, mulberry32 } from './rng';
+import { REGION_AVAILABILITY, project, sampleHome } from '../geo/australia';
 
 /** Gambling states (PGSI categories + treatment pathway). */
 export const NG = 0, NR = 1, LR = 2, MR = 3, PG = 4, TX = 5, RC = 6;
@@ -20,11 +21,24 @@ export interface SimOptions {
 
 export interface SimEvent { month: number; kind: string; text: string }
 
+/** Calendar: month 0 of a run is January 2018 (first HILDA reference wave). */
+export const START_YEAR = 2018;
+export const AT_RISK = (s: number) => s === LR || s === MR || s === PG || s === TX;
+
 /** One row of history per month. */
 export interface Row {
   month: number;
   counts: number[]; // per state, as shares of population
-  target: number; // moderate + problem share
+  target: number; // at-risk share: low + moderate + problem (incl. in treatment) — the central stock
+  modHigh: number; // moderate + problem share
+  regionAtRisk: number[]; // at-risk share by state (NSW, VIC, QLD, WA, SA, TAS, ACT, NT)
+  youngMenAtRisk: number; // at-risk share among men aged 18-34
+  othersAtRisk: number; // at-risk share among everyone else
+  inflow: number; // people/year entering any at-risk category
+  outflow: number; // people/year leaving the at-risk categories (recovery, quitting, de-escalation to no risk)
+  escalations: number; // people/year moving low→moderate or moderate→problem
+  helpAdmissions: number; // people/year starting treatment
+  socialCost: number; // AUD / month (harm-weighted, Victoria 2023 method scaled nationally)
   harm: number; // harm index per 1,000 adults
   harmByGroup: [number, number, number]; // low, moderate, problem (incl. affected others)
   ggrLegal: number; // currency / month (real scale)
@@ -78,6 +92,10 @@ export class Simulation {
   alc: Uint8Array;
   drug: Uint8Array;
   illegal: Uint8Array;
+  male: Uint8Array;
+  region: Uint8Array;
+  px: Float32Array; // projected map position in [0,1]
+  py: Float32Array;
   debt: Float32Array;
   waiting: Uint8Array;
   waitSince: Int32Array;
@@ -87,9 +105,8 @@ export class Simulation {
   nbrStart: Int32Array;
   nbr: Int32Array;
   longLinks: Int32Array; // pairs of rewired long-range ties (for drawing)
-  cols: number;
-  rows: number;
   network: NetworkKind;
+  private flow = { inflow: 0, outflow: 0, esc: 0, help: 0 };
 
   // SD stocks
   A = 0.6; W = 0.3; L = 0.5; D = 0.025; R = 0.3; I = 0.15; C = 0; balance = 0; crisis = false;
@@ -118,13 +135,20 @@ export class Simulation {
     this.alc = new Uint8Array(n);
     this.drug = new Uint8Array(n);
     this.illegal = new Uint8Array(n);
+    this.male = new Uint8Array(n);
+    this.region = new Uint8Array(n);
+    this.px = new Float32Array(n);
+    this.py = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const h = sampleHome(this.rand);
+      const [x, y] = project([h.lon, h.lat]);
+      this.px[i] = x; this.py[i] = y; this.region[i] = h.region;
+    }
     this.debt = new Float32Array(n);
     this.waiting = new Uint8Array(n);
     this.waitSince = new Int32Array(n);
     this.taste = new Float32Array(n * PRODUCTS);
     this.prAgentDefault = new Float32Array(n);
-    this.cols = Math.ceil(Math.sqrt(n * 1.6));
-    this.rows = Math.ceil(n / this.cols);
     const net = this.buildNetwork();
     this.nbrStart = net.start; this.nbr = net.list; this.longLinks = net.long;
 
@@ -132,8 +156,8 @@ export class Simulation {
     this.eff = { s1: { ...e }, s2: { ...e }, s3: { ...e } };
     this.initialEff = { ...e };
 
-    // initial distribution ≈ status-quo steady state
-    const init = [0.339, 0.51, 0.102, 0.036, 0.0114, 0.0007, 0.0017];
+    // initial distribution ≈ 2018 status-quo steady state (HILDA 2018: 3.7% low, 2.5% moderate, 1.1% high risk)
+    const init = [0.37, 0.552, 0.037, 0.025, 0.011, 0.0007, 0.0023];
     for (let i = 0; i < n; i++) this.spawn(i, true, init);
     this.A = this.levers.acceptance / 100;
     this.I = this.P.illegalBase;
@@ -149,32 +173,29 @@ export class Simulation {
   }
 
   // ---------------------------------------------------------------- setup
+  /** Spatial social network: each adult knows their ~6 nearest neighbours on the map; 'smallworld' rewires 5% to anywhere (family, work, online). */
   private buildNetwork() {
-    const n = this.n, cols = this.cols, rnd = this.rand;
+    const n = this.n, rnd = this.rand, k = 6;
     const adj: number[][] = Array.from({ length: n }, () => []);
     const long: number[] = [];
     const link = (a: number, b: number) => { if (a !== b && !adj[a].includes(b)) { adj[a].push(b); adj[b].push(a); } };
-    if (this.network === 'grid') {
-      for (let i = 0; i < n; i++) {
-        const x = i % cols, y = Math.floor(i / cols);
-        for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || nx >= cols) continue;
-          const j = ny * cols + nx;
-          if (j < n) link(i, j);
-        }
+    const G = 64, cell = new Map<number, number[]>();
+    const key = (x: number, y: number) => y * G + x;
+    const cx = (v: number) => Math.min(G - 1, Math.max(0, Math.floor(v * G)));
+    for (let i = 0; i < n; i++) { const kk = key(cx(this.px[i]), cx(this.py[i])); (cell.get(kk) ?? cell.set(kk, []).get(kk)!).push(i); }
+    for (let i = 0; i < n; i++) {
+      const x0 = cx(this.px[i]), y0 = cx(this.py[i]);
+      let cand: number[] = [];
+      for (let r = 1; r < G && cand.length < k + 1; r++) {
+        cand = [];
+        for (let y = y0 - r; y <= y0 + r; y++) for (let x = x0 - r; x <= x0 + r; x++) { const c = cell.get(key(x, y)); if (c) cand.push(...c); }
       }
-    } else {
-      // Watts–Strogatz: ring lattice (k=6) laid out row-major, 5% rewiring
-      const k = 3, pRewire = 0.05;
-      for (let i = 0; i < n; i++) {
-        for (let d = 1; d <= k; d++) {
-          let j = (i + d) % n;
-          if (rnd() < pRewire) { j = Math.floor(rnd() * n); long.push(i, j); }
-          link(i, j);
-        }
-        // vertical neighbour keeps the visual grid coherent
-        if (i + cols < n && rnd() < 0.5) link(i, i + cols);
+      const d = (j: number) => (this.px[j] - this.px[i]) ** 2 + (this.py[j] - this.py[i]) ** 2;
+      cand = cand.filter((j) => j !== i).sort((a, b) => d(a) - d(b)).slice(0, k);
+      for (const j0 of cand) {
+        let j = j0;
+        if (this.network === 'smallworld' && rnd() < 0.05) { j = Math.floor(rnd() * n); long.push(i, j); }
+        link(i, j);
       }
     }
     const start = new Int32Array(n + 1);
@@ -193,6 +214,7 @@ export class Simulation {
     this.vuln[i] = Math.exp(0.45 * z - 0.45 * 0.45 / 2);
     const u = r();
     this.subtype[i] = u < 0.7 ? 0 : u < 0.9 ? 1 : 2;
+    this.male[i] = r() < 0.49 ? 1 : 0;
     const alcP = this.levers.alcohol / 100, drugP = this.levers.drugs / 100;
     let s = NG;
     if (dist) { let acc = 0; const v = r(); for (let k = 0; k < STATE_COUNT; k++) { acc += dist[k]; if (v < acc) { s = k; break; } } }
@@ -211,9 +233,20 @@ export class Simulation {
   }
 
   // ---------------------------------------------------------------- products
+  /** Exogenous market trend (online wagering boom, 2018→): extra marketing and product-innovation intensity, 0..1 scale. */
+  trend(): number { return this.burning ? 0 : (this.P.trendPerYear / 100) * Math.min(this.month / 12, this.P.trendYears); }
+  /** Effective market drivers after bans, prohibition and the market trend (0..1). */
+  drivers(e: Eff) {
+    const proh = e.prohibition, T = this.trend();
+    const adBanF = 1 - 0.5 * Math.min(1, e.adBan) - 0.4 * Math.max(0, e.adBan - 1);
+    const mkt = clamp(e.marketing / 100 + T, 0, 1) * adBanF * (1 - 0.8 * proh) + 0.05 * proh;
+    const avail = (e.availability / 100) * (1 - proh) + 0.3 * proh;
+    const inn = clamp(e.innovation / 100 + T * (1 - 0.6 * e.inPlayBan), 0, 1);
+    return { mkt, avail, inn, adBanF };
+  }
   private mix(e: Eff, useDefault = false): number[] {
     const ev = useDefault ? toNum(DEFAULT_LEVERS) : e;
-    const f = 0.5 + ev.innovation / 100;
+    const f = 0.5 + (useDefault ? ev.innovation / 100 : this.drivers(ev).inn);
     const av = 0.5 + ev.availability / 100;
     return [0.3, 0.2, 0.15 * f * (1 - ev.inPlayBan), 0.2 * f, 0.15 * av];
   }
@@ -269,7 +302,7 @@ export class Simulation {
 
   private resistanceTarget(): number {
     const e = this.eff.s3;
-    return clamp(0.6 * this.D / 0.1 + 0.3 * this.L + 0.3 * e.earmarking / 100 + (this.crisis ? 0.3 : 0), 0, 1);
+    return clamp(0.6 * this.D / this.P.dependencyNorm + 0.3 * this.L + 0.3 * e.earmarking / 100 + (this.crisis ? 0.3 : 0), 0, 1);
   }
 
   /** Third-order delay of every lever, with harm-reducing changes attenuated by political resistance. */
@@ -300,10 +333,9 @@ export class Simulation {
     this.updateEffectiveLevers();
     const P = this.P, e = this.eff.s3, rnd = this.rand, n = this.n;
     const proh = e.prohibition;
-    const adBanF = 1 - 0.5 * Math.min(1, e.adBan) - 0.4 * Math.max(0, e.adBan - 1);
-    const mkt = (e.marketing / 100) * adBanF * (1 - 0.8 * proh) + 0.05 * proh;
-    const avail = (e.availability / 100) * (1 - proh) + 0.3 * proh;
-    const cAv = avail - 0.5, cMkt = mkt - 0.5, cInn = e.innovation / 100 - 0.5;
+    const { mkt, avail, inn } = this.drivers(e);
+    const cAv = avail - 0.5, cMkt = mkt - 0.5, cInn = inn - 0.5;
+    const early = e.earlyDetection * (1 - proh);
     const cAcc = this.A - 0.6;
     const pressure = e.socialPressure / 50;
     const stake = e.stakeLimits * (1 - proh), dep = e.depositLimits * (1 - proh), aff = e.affordability * (1 - proh);
@@ -325,6 +357,8 @@ export class Simulation {
     const alcIn = (alcP / (1 - alcP)) * sudOut * 0.85; // 0.85 compensates for gambling→SUD coupling
     const drugIn = (drugP / (1 - drugP)) * sudOut * 0.85;
     const illegalTau = P.illegalTau;
+    const youngMale = Math.exp(P.b_youngMenMarketing * cMkt);
+    const flow = this.flow; flow.inflow = flow.outflow = flow.esc = flow.help = 0;
 
     this.prev.set(this.state);
     const prev = this.prev;
@@ -368,39 +402,43 @@ export class Simulation {
       const esc = escG * this.vuln[i] * subEsc * sudEsc * prRel * peerEsc * (ill ? P.illegalRisk : limitEsc);
       const deesc = deescG * subRec * sudRec / (ill ? 1.2 : 1);
       const young = this.age[i] < 25 ? 1.5 * (1 - 0.3 * e.ageVerification) : 1;
+      const ym = this.male[i] === 1 && this.age[i] < 35;
+      const sexEsc = (this.male[i] ? P.maleRisk : P.femaleRisk) * (ym ? P.youngMenRisk * youngMale : 1);
+      const regAv = Math.exp(P.b_availability * 0.5 * (REGION_AVAILABILITY[this.region[i]] - 1) * (1 - proh));
+      const escI = esc * sexEsc * regAv;
 
       let s = s0;
       const u = rnd();
       switch (s0) {
         case NG: {
-          const r = P.h_NG_NR * startG * young * Math.exp(P.b_peerStart * pressure * peerG);
+          const r = P.h_NG_NR * startG * young * regAv * (ym ? youngMale : 1) * Math.exp(P.b_peerStart * pressure * peerG);
           if (u < hazardToProb(r)) s = NR;
           break;
         }
         case NR: {
-          const rq = P.h_NR_NG * quitG, ru = P.h_NR_LR * esc;
+          const rq = P.h_NR_NG * quitG, ru = P.h_NR_LR * escI;
           const pt = hazardToProb(rq + ru);
           if (u < pt) s = u < pt * rq / (rq + ru) ? NG : LR;
           break;
         }
         case LR: {
-          const rd = P.h_LR_NR * deesc, rq = P.h_LR_NG * quitG, ru = P.h_LR_MR * esc;
+          const rd = P.h_LR_NR * deesc * (1 + 0.4 * early), rq = P.h_LR_NG * quitG, ru = P.h_LR_MR * escI * (1 - 0.3 * early);
           const tot = rd + rq + ru, pt = hazardToProb(tot);
           if (u < pt) { const v = u / pt * tot; s = v < rd ? NR : v < rd + rq ? NG : MR; }
           break;
         }
         case MR: {
           const debtF = 1 + 0.6 * Math.min(1, this.debt[i] / (P.baseSpend * 120));
-          const rd = P.h_MR_LR * deesc, ru = P.h_MR_PG * P.pgScale * esc * debtF;
+          const rd = P.h_MR_LR * deesc * (1 + 0.25 * early), ru = P.h_MR_PG * P.pgScale * escI * debtF * (1 - 0.15 * early);
           const pt = hazardToProb(rd + ru);
           if (u < pt) s = u < pt * rd / (rd + ru) ? LR : PG;
-          else if (!this.waiting[i] && rnd() < hazardToProb(P.h_MR_TX * helpG * subHelp)) { this.waiting[i] = 1; this.waitSince[i] = this.month; }
+          else if (!this.waiting[i] && rnd() < hazardToProb(P.h_MR_TX * helpG * subHelp * (1 + 1.5 * early))) { this.waiting[i] = 1; this.waitSince[i] = this.month; }
           break;
         }
         case PG: {
           const rd = P.h_PG_MR * deesc * (1 + 0.5 * selfEx * (ill ? 0 : 1));
           if (u < hazardToProb(rd)) s = MR;
-          else if (!this.waiting[i] && rnd() < hazardToProb(P.h_PG_TX * helpG * subHelp)) { this.waiting[i] = 1; this.waitSince[i] = this.month; }
+          else if (!this.waiting[i] && rnd() < hazardToProb(P.h_PG_TX * helpG * subHelp * (1 + 0.5 * early))) { this.waiting[i] = 1; this.waitSince[i] = this.month; }
           break;
         }
         case TX: {
@@ -412,13 +450,18 @@ export class Simulation {
           break;
         }
         case RC: {
-          const rp = P.h_RC_PG * relapseG * (ill ? 1.3 : 1) * sudEsc, rm = P.h_RC_MR * relapseG, rn = P.h_RC_NG;
+          const rp = P.h_RC_PG * relapseG * (ill ? 1.3 : 1) * sudEsc * sexEsc, rm = P.h_RC_MR * relapseG, rn = P.h_RC_NG;
           const tot = rp + rm + rn, pt = hazardToProb(tot);
           if (u < pt) { const v = u / pt * tot; s = v < rp ? PG : v < rp + rm ? MR : NG; }
           break;
         }
       }
       st[i] = s;
+      if (s !== s0) {
+        const was = AT_RISK(s0), now = AT_RISK(s);
+        if (!was && now) flow.inflow++; else if (was && !now) flow.outflow++;
+        if ((s0 === LR && s === MR) || (s0 === MR && s === PG)) flow.esc++;
+      }
       if (this.waiting[i] && (s !== MR && s !== PG)) this.waiting[i] = 0;
       if (this.waiting[i] && this.month - this.waitSince[i] > 6 && rnd() < 0.1) this.waiting[i] = 0; // abandon queue
 
@@ -439,7 +482,7 @@ export class Simulation {
       const waiting: number[] = [];
       for (let i = 0; i < n; i++) if (this.waiting[i]) waiting.push(i);
       waiting.sort((a, b) => this.waitSince[a] - this.waitSince[b]);
-      for (const i of waiting) { if (freeInt-- <= 0) break; st[i] = TX; this.waiting[i] = 0; }
+      for (const i of waiting) { if (freeInt-- <= 0) break; st[i] = TX; this.waiting[i] = 0; flow.help++; }
     }
 
     const agg = this.aggregate(mix, rk, e);
@@ -452,19 +495,23 @@ export class Simulation {
   private aggregate(mix: number[], rk: number[], e: Eff) {
     const P = this.P, n = this.n, scale = this.scale, st = this.state;
     const proh = e.prohibition;
-    const adBanF = 1 - 0.5 * Math.min(1, e.adBan) - 0.4 * Math.max(0, e.adBan - 1);
-    const mkt = (e.marketing / 100) * adBanF * (1 - 0.8 * proh) + 0.05 * proh;
-    const avail = (e.availability / 100) * (1 - proh) + 0.3 * proh;
-    const intensity = Math.exp(0.4 * (mkt - 0.5) + 0.5 * (e.innovation / 100 - 0.5) + 0.3 * (avail - 0.5));
+    const { mkt, avail, inn } = this.drivers(e);
+    const intensity = Math.exp(0.4 * (mkt - 0.5) + 0.5 * (inn - 0.5) + 0.3 * (avail - 0.5));
     const stake = e.stakeLimits * (1 - proh), dep = e.depositLimits * (1 - proh), aff = e.affordability * (1 - proh);
     const limitSpend = (1 - 0.25 * stake) * (1 - 0.2 * dep) * (1 - 0.35 * aff);
     const counts = new Array(STATE_COUNT).fill(0);
     let legal = 0, illegal = 0, atRiskSpend = 0, harmLR = 0, harmMR = 0, harmPG = 0, affected = 0, sudPG = 0, queue = 0;
+    const regN = new Array(8).fill(0), regR = new Array(8).fill(0);
+    let ymN = 0, ymR = 0, cost = 0;
     const mult = [0, P.spend_NR, P.spend_LR, P.spend_MR, P.spend_PG, 0, 0];
     for (let i = 0; i < n; i++) {
       const s = st[i];
       counts[s]++;
       if (this.waiting[i]) queue++;
+      const ar = AT_RISK(s);
+      regN[this.region[i]]++; if (ar) regR[this.region[i]]++;
+      if (this.male[i] && this.age[i] < 35) { ymN++; if (ar) ymR++; }
+      if (s === LR) cost += P.harm_LR; else if (s === MR) cost += P.harm_MR; else if (s === PG || s === TX) cost += P.harm_PG;
       if (s >= NR && s <= PG) {
         const prRel = Math.sqrt(this.productRisk(i, mix, rk) / this.ref.prMean);
         let spend = P.baseSpend * mult[s] * intensity * prRel;
@@ -483,7 +530,7 @@ export class Simulation {
     const marketingCost = legal * 0.08 * (e.marketing / 50);
     const profit = Math.max(0, legal - tax - marketingCost);
     const support = e.support / 100;
-    const programCost = support * (P.supportBudgetFull + P.campaignCostFull) + (e.enforcement / 100) * P.enforcementCostFull;
+    const programCost = support * (P.supportBudgetFull + P.campaignCostFull) + (e.enforcement / 100) * P.enforcementCostFull + e.earlyDetection * P.earlyDetectionCost;
     const capacityTarget = ((e.levy / 100) * tax + support * P.supportBudgetFull) / P.treatmentCostPerSlot;
     const totalSpend = legal + illegal;
     const harmTotal = harmLR + harmMR + harmPG;
@@ -496,6 +543,10 @@ export class Simulation {
       affected: affected * scale,
       sudAmongPG: counts[PG] > 0 ? sudPG / counts[PG] : 0,
       queue: queue * scale,
+      regionAtRisk: regR.map((r, k) => (regN[k] ? r / regN[k] : 0)),
+      youngMenAtRisk: ymN ? ymR / ymN : 0,
+      othersAtRisk: n - ymN > 0 ? (counts[LR] + counts[MR] + counts[PG] + counts[TX] - ymR) / (n - ymN) : 0,
+      socialCost: (cost * scale * P.costPerHarmUnit) / 12,
     };
   }
 
@@ -509,8 +560,7 @@ export class Simulation {
       return;
     }
     const support = e.support / 100;
-    const adBanF = 1 - 0.5 * Math.min(1, e.adBan) - 0.4 * Math.max(0, e.adBan - 1);
-    const mkt = (e.marketing / 100) * adBanF * (1 - 0.8 * e.prohibition);
+    const mkt = this.drivers(e).mkt;
     // awareness: visible harm + campaigns
     const harmRel = a.harmPerCap / this.ref.harm;
     const wT = clamp(0.3 * Math.pow(harmRel, 0.7) + 0.35 * (support - 0.2), 0, 1);
@@ -521,7 +571,8 @@ export class Simulation {
     // industry influence follows profits
     const lT = clamp(0.5 * a.profit / this.ref.profit, 0, 1);
     this.L += (lT - this.L) / P.tau_influence;
-    // fiscal dependency
+    // fiscal dependency (the state's own revenue base grows in real terms)
+    this.ref.budget *= 1 + P.budgetGrowth / 12;
     const dT = this.ref.budget > 0 ? a.tax / this.ref.budget : 0;
     this.D += (dT - this.D) / P.tau_dependency;
     // budget balance vs. the baseline the public budget was built on
@@ -539,7 +590,7 @@ export class Simulation {
     // illegal channel
     const enfEffect = 1 - 0.9 * (e.enforcement / 100 - 0.3);
     const iT = clamp(
-      P.illegalBase * enfEffect + P.illegalTaxSlope * Math.max(0, e.taxRate / 100 - 0.2) +
+      P.illegalBase * enfEffect + P.illegalTaxSlope * Math.max(0, e.taxRate / 100 - P.illegalTaxThreshold) +
       0.04 * e.stakeLimits + 0.03 * e.depositLimits + 0.06 * e.affordability + 0.05 * e.inPlayBan +
       0.03 * (e.adBan / 2) + 0.6 * e.prohibition * Math.max(0.2, enfEffect),
       0.01, 0.95);
@@ -552,7 +603,16 @@ export class Simulation {
     this.history.push({
       month: this.month,
       counts,
-      target: counts[MR] + counts[PG],
+      target: counts[LR] + counts[MR] + counts[PG] + counts[TX],
+      modHigh: counts[MR] + counts[PG],
+      regionAtRisk: a.regionAtRisk,
+      youngMenAtRisk: a.youngMenAtRisk,
+      othersAtRisk: a.othersAtRisk,
+      inflow: this.flow.inflow * this.scale * 12,
+      outflow: this.flow.outflow * this.scale * 12,
+      escalations: this.flow.esc * this.scale * 12,
+      helpAdmissions: this.flow.help * this.scale * 12,
+      socialCost: a.socialCost,
       harm: a.harmPerCap * 1000,
       harmByGroup: a.harmByGroup,
       ggrLegal: a.legal,
@@ -591,9 +651,15 @@ export class Simulation {
     this.once('resist', r.resistance > 0.6, 'resistance',
       `Political resistance above 60%. Fiscal dependency, earmarking and industry influence are now blocking most of your reforms (Policy Resistance).`);
     this.once('down20', r.target < r0.target * 0.8, 'progress',
-      `Moderate + problem gambling down 20% from the start. Note how long it took: policy delays plus slow-moving social norms.`);
+      `At-risk gambling (low + moderate + high) is down 20% from 2018. Note how long it took: policy delays plus slow-moving social norms.`);
     this.once('up20', r.target > r0.target * 1.2, 'worse',
-      `Moderate + problem gambling up 20% from the start. Check the reinforcing loops: peer contagion and normalization.`);
+      `At-risk gambling is up 20% since 2018. The online wagering boom feeds the reinforcing loops: peer contagion and normalization.`);
+    this.once('hilda22', this.month === 48, 'hilda',
+      `January 2022: the model says ${(r.target * 100).toFixed(1)}% of adults are at risk. HILDA measured 9.8% in 2022 (4.9% low, 3.1% moderate, 1.8% high).`);
+    this.once('youngmen', r.youngMenAtRisk > 2 * r.othersAtRisk && this.month > 6, 'worse',
+      `Men aged 18-34 are now more than twice as likely to be at risk as everyone else — sports-betting marketing targets them. This is the "generation of risky gamblers".`);
+    this.once('costtax', r.socialCost > 3 * r.tax && this.month > 1, 'fiscal',
+      `Social cost of gambling harm is now more than 3× the tax it brings in. The state collects the revenue; families, health and justice systems pay the cost.`);
     this.once('acc', Math.abs(r.acceptance - r0.acceptance) > 0.1, 'norms',
       `Social acceptance has moved by more than 10 points. This slow stock now amplifies (or dampens) every other lever.`);
     this.once('taxdrop', r.tax < r0.tax * 0.7 && r0.tax > 0, 'fiscal',
@@ -604,11 +670,11 @@ export class Simulation {
   }
 
   // ---------------------------------------------------------------- render helpers
-  /** Packed per-agent render info: bits 0-2 state, bit 3 illegal, bit 4 substance disorder, bit 5 waiting. */
+  /** Packed per-agent render info: bits 0-2 state, bit 3 illegal, bit 4 substance disorder, bit 5 waiting, bit 6 man aged 18-34. */
   renderBuffer(out?: Uint8Array): Uint8Array {
     const b = out ?? new Uint8Array(this.n);
     for (let i = 0; i < this.n; i++)
-      b[i] = this.state[i] | (this.illegal[i] << 3) | ((this.alc[i] | this.drug[i]) << 4) | (this.waiting[i] << 5);
+      b[i] = this.state[i] | (this.illegal[i] << 3) | ((this.alc[i] | this.drug[i]) << 4) | (this.waiting[i] << 5) | ((this.male[i] && this.age[i] < 35 ? 1 : 0) << 6);
     return b;
   }
 }

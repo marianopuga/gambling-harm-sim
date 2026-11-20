@@ -9,6 +9,7 @@ export interface ChartOpts {
   goal?: { value: number; label: string };
   band?: { lo: number[]; hi: number[]; color: string };
   markers?: number[]; // x positions (months) of events
+  points?: { x: number; y: number; label: string }[]; // reference observations (e.g. HILDA waves)
   xLabel?: (m: number) => string;
 }
 
@@ -47,6 +48,7 @@ export class LineChart {
       else for (const se of series) for (const v of se.data) if (Number.isFinite(v)) yMax = Math.max(yMax, v);
       if (o.band) for (const v of o.band.hi) yMax = Math.max(yMax, v);
       if (o.goal) yMax = Math.max(yMax, o.goal.value * 1.2);
+      if (o.points) for (const p of o.points) yMax = Math.max(yMax, p.y * 1.15);
       yMax = niceMax(yMax * 1.05);
     }
     const X = (m: number) => padL + (m / xMax) * pw;
@@ -59,9 +61,9 @@ export class LineChart {
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
       ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText((o.yFmt ?? String)(v), padL - 6, y);
     }
-    const yearStep = xMax > 180 ? 60 : xMax > 60 ? 24 : 12;
+    const yearStep = pw < 300 ? (xMax > 120 ? 96 : 48) : xMax > 180 ? 48 : xMax > 60 ? 24 : 12;
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    for (let m = 0; m <= xMax; m += yearStep) ctx.fillText(o.xLabel ? o.xLabel(m) : `y${m / 12}`, X(m), h - padB + 6);
+    for (let m = 0; m <= xMax; m += yearStep) { ctx.textAlign = X(m) > w - padR - 14 ? 'right' : 'center'; ctx.fillText(o.xLabel ? o.xLabel(m) : String(2018 + Math.floor(m / 12)), Math.min(X(m), w - 2), h - padB + 6); }
     // event markers
     if (o.markers) { ctx.strokeStyle = cssVar('--warn'); ctx.globalAlpha = .35; ctx.setLineDash([2, 3]); for (const m of o.markers) { ctx.beginPath(); ctx.moveTo(X(m), padT); ctx.lineTo(X(m), padT + ph); ctx.stroke(); } ctx.setLineDash([]); ctx.globalAlpha = 1; }
     // band
@@ -95,13 +97,24 @@ export class LineChart {
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = cssVar('--good'); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(o.goal.label, w - padR - 2, y - 2);
     }
+    // reference points
+    if (o.points) {
+      for (const p of o.points) {
+        if (p.x > xMax) continue;
+        const x = X(p.x), y = Y(p.y);
+        ctx.fillStyle = cssVar('--panel'); ctx.strokeStyle = ink; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = ink; ctx.font = '600 11px Inter, system-ui, sans-serif'; ctx.textAlign = x > w - 90 ? 'right' : 'left'; ctx.textBaseline = 'bottom';
+        ctx.fillText(p.label, x + (x > w - 90 ? -8 : 8), y - 6);
+      }
+    }
     // hover readout
     if (this.hoverX !== null && this.hoverX > padL) {
       const m = Math.round(((this.hoverX - padL) / pw) * xMax);
       const i = months.indexOf(Math.min(m, months[n - 1]));
       if (i >= 0) {
         ctx.strokeStyle = ink; ctx.globalAlpha = .4; ctx.beginPath(); ctx.moveTo(X(months[i]), padT); ctx.lineTo(X(months[i]), padT + ph); ctx.stroke(); ctx.globalAlpha = 1;
-        const lines = [`month ${months[i]}`, ...series.map((s) => `${s.label}: ${(o.yFmt ?? String)(s.data[i] ?? NaN)}`)];
+        const mo = months[i]; const lines = [`${2018 + Math.floor(mo / 12)}-${String((mo % 12) + 1).padStart(2, '0')}`, ...series.map((s) => `${s.label}: ${(o.yFmt ?? String)(s.data[i] ?? NaN)}`)];
         const bw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 14, bh = lines.length * 15 + 8;
         let bx = X(months[i]) + 8; if (bx + bw > w) bx = X(months[i]) - bw - 8;
         ctx.fillStyle = ink; ctx.globalAlpha = .92; ctx.fillRect(bx, padT, bw, bh); ctx.globalAlpha = 1;

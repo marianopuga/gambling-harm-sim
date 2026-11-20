@@ -93,7 +93,8 @@ export class LeversPanel {
     for (const v of this.inputs.values()) v.sync();
   }
 
-  lock(allowedGroups?: string[]) {
-    for (const { meta, row } of this.inputs.values()) row.classList.toggle('locked', !!allowedGroups && !allowedGroups.includes(meta.group));
+  /** Lock every lever except those whose group or key is listed. */
+  lock(allowed?: string[]) {
+    for (const { meta, row } of this.inputs.values()) row.classList.toggle('locked', !!allowed && !allowed.includes(meta.group) && !allowed.includes(meta.key));
   }
 }

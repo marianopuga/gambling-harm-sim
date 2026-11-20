@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gambling Harm Systems Lab</title>
-  <meta name="description" content="An agent-based + system dynamics simulation of gambling harm: pull policy levers and reduce moderate and high-risk gambling." />
+  <title>Gambling Harm Systems Lab · Australia</title>
+  <meta name="description" content="Australia 2018–2038: an agent-based + system dynamics simulation of at-risk gambling. Pull policy levers to stop people becoming at risk, stop escalation and reduce harm." />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,7 +15,7 @@
   <header class="topbar">
     <div class="brand">
       <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><circle cx="9" cy="10" r="4" fill="var(--s1)"/><circle cx="22" cy="9" r="3" fill="var(--s3)"/><circle cx="16" cy="21" r="5" fill="var(--s4)"/><path d="M9 10 L16 21 L22 9" stroke="var(--muted)" stroke-width="1.4" fill="none"/></svg>
-      <div><h1>Gambling Harm Systems Lab</h1><p class="sub" data-i18n="tagline"></p></div>
+      <div><h1>Gambling Harm Systems Lab <span class="flag">Australia</span></h1><p class="sub" data-i18n="tagline"></p></div>
     </div>
     <div class="controls" role="toolbar" aria-label="Simulation controls">
       <label class="field"><span data-i18n="scenario"></span><select id="scenario"></select></label>
@@ -30,7 +30,7 @@
         <div class="menu-body">
           <label class="field"><span data-i18n="agents"></span><select id="agents"><option>500</option><option>1000</option><option>2000</option><option selected>3000</option><option>5000</option></select></label>
           <label class="field"><span data-i18n="seed"></span><input id="seed" type="number" value="42" min="1" max="999999" /></label>
-          <label class="field"><span data-i18n="network"></span><select id="network"><option value="smallworld">Small-world</option><option value="grid">Spatial grid</option></select></label>
+          <label class="field"><span data-i18n="network"></span><select id="network"><option value="smallworld">Neighbours + long-range ties</option><option value="grid">Neighbours only</option></select></label>
           <label class="field"><span data-i18n="compareWith"></span><select id="compare"><option value="">—</option></select></label>
           <div class="row"><button id="share" class="btn" data-i18n="share"></button><button id="csv" class="btn" data-i18n="csv"></button></div>
           <button id="theme" class="btn" data-i18n="theme"></button>
@@ -50,18 +50,53 @@
     </aside>
 
     <main id="main">
+      <section class="hero card" aria-labelledby="heroTitle">
+        <div class="hero-head">
+          <h2 id="heroTitle">The stock: Australians at risk from gambling</h2>
+          <span class="year" id="year">2018</span>
+        </div>
+        <div class="sf" aria-live="polite">
+          <div class="sf-flow in">
+            <div class="sf-val" id="sfIn">–</div>
+            <div class="sf-lbl">adults start being at risk / yr</div>
+            <div class="sf-arrow"><i></i></div>
+            <div class="sf-drivers">advertising · online wagering · friends who bet · social acceptance</div>
+          </div>
+          <div class="sf-stock">
+            <div class="sf-title">At-risk gamblers <span>low + moderate + high (PGSI 1+)</span></div>
+            <div class="sf-big"><span id="sfStock">–</span><small id="sfPeople"></small></div>
+            <div class="sf-bars" id="sfBars"></div>
+            <div class="sf-esc" id="sfEsc"></div>
+          </div>
+          <div class="sf-flow out">
+            <div class="sf-val" id="sfOut">–</div>
+            <div class="sf-lbl">adults leave risk / yr</div>
+            <div class="sf-arrow"><i></i></div>
+            <div class="sf-drivers">natural recovery · early detection · support &amp; treatment · quitting</div>
+          </div>
+        </div>
+        <div class="goals" id="goals"></div>
+        <details class="problem">
+          <summary>Problem statement</summary>
+          <p>The prevalence of at-risk gambling among Australian adults increased from <b>7.3% in 2018 to 9.8% in 2022</b> across low-, moderate- and high-risk categories (HILDA). Greater exposure to gambling risk is associated with gambling-related harm and wider social costs. Despite these harms, gambling generates substantial revenue for operators and state and territory governments, creating potentially competing incentives between maintaining gambling activity and implementing effective harm-reduction measures.</p>
+          <p>The challenge is to <b>prevent individuals from progressing into higher-risk categories while reducing harm across all levels of risk</b> — without creating unintended consequences or overlooking the competing interests that sustain the system. Low-risk gamblers matter too: there are many more of them, and Australian research finds they already have worse health, social and economic outcomes than non-gamblers.</p>
+          <p class="hint">A wicked problem: government revenue vs. public-health responsibility vs. operators' commercial interests. The model does not assume governments avoid regulation because of revenue — it shows how the tension plays out over time.</p>
+        </details>
+      </section>
       <section class="kpis" id="kpis" aria-live="polite"></section>
       <section class="stage">
         <div class="canvas-wrap card">
           <div class="card-head">
-            <h2 data-i18n="population"></h2>
+            <h2>Australia · each dot ≈ <span id="perDot">7,000</span> adults</h2>
             <div class="legend" id="legend"></div>
           </div>
-          <canvas id="agentCanvas" aria-label="Agent population; each dot is a group of adults colored by gambling risk state" role="img"></canvas>
+          <canvas id="agentCanvas" aria-label="Map of Australia; each dot is a group of adults, colored by gambling risk; a heat layer shows where at-risk gambling concentrates" role="img"></canvas>
           <div class="overlays">
-            <label><input type="checkbox" id="ovSud" checked /> <span data-i18n="ovSud"></span></label>
+            <label><input type="checkbox" id="ovHeat" checked /> Heat map of at-risk gambling</label>
+            <label><input type="checkbox" id="ovYoung" /> Highlight men 18-34</label>
+            <label><input type="checkbox" id="ovSud" /> <span data-i18n="ovSud"></span></label>
             <label><input type="checkbox" id="ovIllegal" checked /> <span data-i18n="ovIllegal"></span></label>
-            <label><input type="checkbox" id="ovLinks" checked /> <span data-i18n="ovLinks"></span></label>
+            <label><input type="checkbox" id="ovLinks" /> <span data-i18n="ovLinks"></span></label>
             <span class="month" id="month"></span>
           </div>
           <div class="tooltip" id="agentTip" hidden></div>
