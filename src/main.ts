@@ -35,6 +35,10 @@ const state = {
 };
 
 const policyStart = () => (state.policyYear - 2018) * 12;
+/** The reference row: the month policies start (Jan 2018 by default, or the chosen policy year). */
+const baseRow = () => state.history[Math.min(policyStart(), state.history.length - 1)];
+/** 12 months of flows to compare against: the first year (2018) or the year before the policy year. */
+const baseFlows = () => (policyStart() > 0 ? state.history.slice(policyStart() - 11, policyStart() + 1) : state.history.slice(1, 13));
 const startFor = (policy: Levers): Levers => {
   const s = { ...DEFAULT_LEVERS };
   for (const k of STRUCTURAL) (s as unknown as Record<string, unknown>)[k] = policy[k];
@@ -80,7 +84,7 @@ wA.onmessage = (ev) => {
     view.setLayout({ n: m.n, px: m.px, py: m.py, region: m.region, longLinks: m.longLinks });
     view.setBuffer(m.buffer);
     $('perDot').textContent = Math.round(m.scale / 100) * 100 >= 1000 ? `${(Math.round(m.scale / 100) * 100).toLocaleString('en-AU')}` : String(Math.round(m.scale));
-    state.history = m.history; state.events = [];
+    state.history = m.history; state.events = m.events ?? [];
     state.awaiting = false;
     post(wA, { type: 'levers', levers: state.levers });
     renderAll(true);
@@ -101,7 +105,7 @@ function reset() {
   panel.set(state.levers, state.start);
   const note = $('policyNote');
   note.hidden = state.policyYear === 2018;
-  note.textContent = `Policies apply from January ${state.policyYear}. Until then the model replays history (status quo, calibrated to HILDA). Set your levers now — they switch on in ${state.policyYear}.`;
+  note.textContent = `The run opens in January ${state.policyYear}: 2018–${state.policyYear - 1} has already happened (status quo, calibrated to HILDA). Your levers act from now on, and changes are measured against ${state.policyYear}.`;
   resetCompare();
   renderEvents();
 }
@@ -137,7 +141,7 @@ const fmtMoney = (v: number) => (Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(1)}b
 const fmtPeople = (v: number) => (v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : v.toFixed(0));
 
 function renderKpis() {
-  const h = state.history, r = h[h.length - 1], r0 = h[0]; if (!r || !r0) return;
+  const h = state.history, r = h[h.length - 1], r0 = baseRow(); if (!r || !r0) return;
   const b = state.historyB[Math.min(state.historyB.length - 1, h.length - 1)];
   const win = winStatus(h);
   const ratio = r.tax > 0 ? r.socialCost / r.tax : Infinity;
@@ -169,7 +173,7 @@ const mean = (rows: Row[], f: (r: Row) => number) => rows.reduce((a, r) => a + f
 /** The stock-and-flow panel and the three prevention goals (12-month averages; flows are noisy month to month). */
 function renderHero() {
   const h = state.history, r = h[h.length - 1]; if (!r) return;
-  const last = h.slice(-12).filter((x) => x.month > 0), base = h.slice(1, 13);
+  const last = h.slice(-12).filter((x) => x.month > 0), base = baseFlows(), r0 = baseRow(), by = state.policyYear;
   const fin = mean(last, (x) => x.inflow), fout = mean(last, (x) => x.outflow), fesc = mean(last, (x) => x.escalations), fhelp = mean(last, (x) => x.helpAdmissions);
   $('sfIn').textContent = last.length ? `+${fmtPeople(fin)}` : '–';
   $('sfOut').textContent = last.length ? `−${fmtPeople(fout)}` : '–';
@@ -177,19 +181,19 @@ function renderHero() {
   (document.querySelector('.sf-flow.in .sf-arrow') as HTMLElement).style.setProperty('--speed', sp(fin));
   (document.querySelector('.sf-flow.out .sf-arrow') as HTMLElement).style.setProperty('--speed', sp(fout));
   $('sfStock').textContent = fmtPct(r.target, 1);
-  $('sfPeople').textContent = `${fmtPeople(r.target * ADULTS)} adults · 2018: ${fmtPct(h[0].target, 1)}`;
+  $('sfPeople').textContent = r.month === r0.month ? `${fmtPeople(r.target * ADULTS)} adults` : `${fmtPeople(r.target * ADULTS)} adults · ${by}: ${fmtPct(r0.target, 1)}`;
   const parts = [[r.counts[2], 2, 'low'], [r.counts[3], 3, 'moderate'], [r.counts[4] + r.counts[5], 4, 'high']] as const;
   $('sfBars').innerHTML = parts.map(([v, c, l]) => `<i style="width:${(v / Math.max(1e-9, r.target)) * 100}%;background:var(--s${c})" title="${l}: ${fmtPct(v, 1)}"></i>`).join('');
   $('sfEsc').innerHTML = last.length ? `<span><i class="dot" style="background:var(--s2)"></i>low <b>${fmtPct(r.counts[2], 1)}</b></span><span><i class="dot" style="background:var(--s3)"></i>moderate <b>${fmtPct(r.counts[3], 1)}</b></span><span><i class="dot" style="background:var(--s4)"></i>high <b>${fmtPct(r.counts[4] + r.counts[5], 1)}</b></span><span>↑ escalating <b>${fmtPeople(fesc)}</b>/yr</span><span>→ starting treatment <b>${fmtPeople(fhelp)}</b>/yr</span>` : '';
   const g = (name: string, title: string, now: number, b0: number, fmt: (v: number) => string, what: string) => {
     const d = b0 > 0 && base.length >= 6 ? now / b0 - 1 : NaN;
     const cls = !Number.isFinite(d) ? '' : d < -0.05 ? 'good' : d > 0.05 ? 'bad' : '';
-    const dv = Number.isFinite(d) ? `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}% vs 2018` : 'baseline…';
+    const dv = Number.isFinite(d) ? (r.month === r0.month ? `start of ${by}` : `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}% vs ${by}`) : 'baseline…';
     return `<div class="goal"><span class="gk">${name}</span><span class="gt">${title}</span><span class="gv ${cls}">${fmt(now)} · ${dv}</span><span class="gd">${what}</span></div>`;
   };
   $('goals').innerHTML = [
     g('Goal 1', 'Prevent escalation', fesc, mean(base, (x) => x.escalations), (v) => `${fmtPeople(v)}/yr`, 'people moving low → moderate → high'),
-    g('Goal 2', 'Reduce severity', r.modHigh / Math.max(1e-9, r.target), h[0].modHigh / Math.max(1e-9, h[0].target), (v) => `${(v * 100).toFixed(0)}% of at-risk`, 'share of at-risk people at moderate or high risk'),
+    g('Goal 2', 'Reduce severity', r.modHigh / Math.max(1e-9, r.target), r0.modHigh / Math.max(1e-9, r0.target), (v) => `${(v * 100).toFixed(0)}% of at-risk`, 'share of at-risk people at moderate or high risk'),
     g('Goal 3', 'Prevent people becoming at risk', fin, mean(base, (x) => x.inflow), (v) => `${fmtPeople(v)}/yr`, 'new at-risk adults per year (the inflow)'),
   ].join('');
 }

@@ -19,11 +19,13 @@ ctx.onmessage = (ev: MessageEvent<ToWorker>) => {
   switch (m.type) {
     case 'init': {
       sim = new Simulation({ n: m.n, seed: m.seed, levers: m.levers, network: m.network, policyStart: m.policyStart });
-      rowsSent = sim.history.length; eventsSent = 0;
+      // history before the policy year has already happened: fast-forward so the run opens in that January
+      for (let t = 0; t < m.policyStart; t++) sim.step();
+      rowsSent = sim.history.length; eventsSent = sim.events.length;
       ctx.postMessage({
         type: 'ready', n: sim.n, px: sim.px, py: sim.py, region: sim.region, scale: sim.scale,
         longLinks: sim.longLinks, nbrStart: sim.nbrStart, nbr: sim.nbr,
-        history: sim.history, buffer: sim.renderBuffer(),
+        history: sim.history, events: sim.events, buffer: sim.renderBuffer(),
       });
       break;
     }

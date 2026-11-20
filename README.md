@@ -11,7 +11,7 @@ The prevalence of at-risk gambling among Australian adults increased from **7.3%
 3. **Prevent people becoming at risk at all** — the tobacco playbook: advertising bans, age verification.
 
 ## Policies from 2018, 2022 or 2026
-The run always starts in January 2018. **Policies from** (top bar) sets when your levers switch on. Default 2018 asks *what if we had acted in 2018?*. With 2022 or 2026 the model first replays history (status quo, calibrated to HILDA) and your policies start that January — *what if we act now?* A dashed line on every chart marks the switch. The default seed (54) tracks HILDA closely (7.5% → 9.8%); averaged over seeds the model gives 7.2% → 9.8%.
+The run always starts in January 2018. **Policies from** (top bar) sets when your levers switch on. Default 2018 asks *what if we had acted in 2018?*. With 2022 or 2026 the run opens in that January with history already played (status quo, calibrated to HILDA): the numbers you see are that year's, and every change is measured against it — *what if we act now?* A dashed line on every chart marks the switch. The default seed (54) tracks HILDA closely (7.5% → 9.8%); averaged over seeds the model gives 7.2% → 9.8%.
 
 ## What you see
 - **The stock panel**: live inflow and outflow, the stock split into low/moderate/high, and the three goals measured against 2018.
