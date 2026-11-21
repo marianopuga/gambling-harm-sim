@@ -192,8 +192,9 @@ function renderHero() {
   const h = state.history, r = h[h.length - 1]; if (!r) return;
   const last = h.slice(-12), base = baseFlows(), r0 = baseRow(), by = state.policyYear;
   const fin = mean(last, (x) => x.inflow), fout = mean(last, (x) => x.outflow), fesc = mean(last, (x) => x.escalations), fhelp = mean(last, (x) => x.helpAdmissions);
-  $('sfIn').textContent = last.length ? `+${fmtPeople(fin)}` : '–';
-  $('sfOut').textContent = last.length ? `−${fmtPeople(fout)}` : '–';
+  const hasFlows = last.length > 0 && fin + fout > 0; // a run never has zero flows; zero means the data is not in yet
+  $('sfIn').textContent = hasFlows ? `+${fmtPeople(fin)}` : '…';
+  $('sfOut').textContent = hasFlows ? `−${fmtPeople(fout)}` : '…';
   const sp = (v: number) => `${Math.max(0.35, Math.min(4, 4e5 / Math.max(1, v))).toFixed(2)}s`;
   (document.querySelector('.sf-flow.in .sf-arrow') as HTMLElement).style.setProperty('--speed', sp(fin));
   (document.querySelector('.sf-flow.out .sf-arrow') as HTMLElement).style.setProperty('--speed', sp(fout));
@@ -228,6 +229,7 @@ function renderHero() {
     return `<div class="goal"><span class="gk">${name}</span><span class="gt">${title}</span><span class="gv">${fmt(now)}</span>${impact}<span class="gd">${what} · ${hist}</span></div>`;
   };
   const sev = (x: Row) => x.modHigh / Math.max(1e-9, x.target);
+  if (!hasFlows) { $('goals').innerHTML = `<div class="goal"><span class="gd">Running the model…</span></div>`; return; }
   $('goals').innerHTML = [
     g('Goal 1', 'Prevent escalation', fesc, mean(lastS, (x) => x.escalations), mean(base, (x) => x.escalations), (v) => `${fmtPeople(v)}/yr`, 'people moving low → moderate → high'),
     g('Goal 2', 'Reduce severity', sev(r), rs ? sev(rs) : NaN, sev(r0), (v) => `${(v * 100).toFixed(0)}% of at-risk`, 'share at moderate or high risk'),
