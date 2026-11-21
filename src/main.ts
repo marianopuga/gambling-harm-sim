@@ -1,12 +1,12 @@
 import './style.css';
-import { DEFAULT_LEVERS, INTERVENTIONS, type Levers } from './model/levers';
+import { DEFAULT_LEVERS, INTERVENTION_KEYS, isChanged, type Levers } from './model/levers';
 import type { Row, SimEvent } from './model/sim';
 import type { MCResult, SensRow } from './model/batch';
 import { applyStrings, t } from './ui/strings';
 import { LineChart, drawTornado, cssVar, type Series } from './ui/charts';
 import { MapView } from './ui/mapView';
 import { HILDA, PARAMS } from './params';
-import { InterventionsPanel } from './ui/interventionsPanel';
+import { LeversPanel } from './ui/leversPanel';
 import { CLD } from './ui/cld';
 import { MISSIONS, winStatus, type Mission } from './ui/missions';
 import { renderModelDoc } from './ui/modelDoc';
@@ -36,7 +36,7 @@ const policyStart = () => (state.policyYear - 2018) * 12;
 const baseRow = () => state.history[Math.min(policyStart(), state.history.length - 1)];
 /** 12 months of flows to compare against: the opening month, or the year before the policy year. */
 const baseFlows = () => (policyStart() > 0 ? state.history.slice(policyStart() - 11, policyStart() + 1) : state.history.slice(0, 1));
-const anyOn = (l: Levers) => INTERVENTIONS.some((m) => l[m.key]);
+const anyOn = (l: Levers) => isChanged(l, DEFAULT_LEVERS);
 
 // ---------------------------------------------------------------- URL state
 function loadHash() {
@@ -62,7 +62,7 @@ let wX: Worker | null = null;
 const post = (w: Worker, m: ToWorker) => w.postMessage(m);
 
 const view = new MapView($<HTMLCanvasElement>('agentCanvas'), $('agentTip'));
-const panel = new InterventionsPanel($('ivList'), (l) => { state.levers = l; post(wA, { type: 'levers', levers: l }); renderHero(); });
+const panel = new LeversPanel($('ivList'), (l) => { state.levers = l; post(wA, { type: 'levers', levers: l }); renderHero(); }, () => { /* no hover action */ });
 new CLD($('cld'));
 
 wA.onmessage = (ev) => {
@@ -71,13 +71,14 @@ wA.onmessage = (ev) => {
     view.setLayout({ n: m.n, px: m.px, py: m.py, region: m.region, longLinks: m.longLinks });
     view.setBuffer(m.buffer);
     $('perDot').textContent = Math.round(m.scale / 100) * 100 >= 1000 ? `${(Math.round(m.scale / 100) * 100).toLocaleString('en-AU')}` : String(Math.round(m.scale));
-    state.history = m.history; state.events = m.events ?? [];
+    state.history = m.history; state.events = (m.events ?? []).filter((e: SimEvent) => e.month >= policyStart());
     state.awaiting = false;
     post(wA, { type: 'levers', levers: state.levers });
     renderAll(true);
   } else if (m.type === 'tick') {
     state.history.push(...m.rows); state.events.push(...m.events);
     view.setBuffer(m.buffer); state.awaiting = false;
+    syncShadow();
     if (m.events.length) renderEvents();
     if (state.history.length - 1 >= HORIZON && state.playing) setPlaying(false);
     renderAll(false);
@@ -86,9 +87,10 @@ wA.onmessage = (ev) => {
 
 function reset() {
   setPlaying(false);
+  state.history = []; state.events = []; // every run starts from zero
   state.awaiting = true;
   post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.start, network: state.network, policyStart: policyStart() });
-  panel.set(state.levers);
+  panel.set(state.levers, state.start);
   const note = $('policyNote');
   note.hidden = state.policyYear === 2018;
   note.textContent = `The run opens in January ${state.policyYear}: 2018–${state.policyYear - 1} has already happened (no interventions, calibrated to HILDA). Your interventions act from now on, and changes are measured against ${state.policyYear}.`;
@@ -102,8 +104,8 @@ function resetShadow() {
   wS = mkWorker();
   wS.onmessage = (ev) => {
     const m = ev.data;
-    if (m.type === 'ready') { state.historyS = m.history; state.awaitingS = false; }
-    else if (m.type === 'tick') { state.historyS.push(...m.rows); state.awaitingS = false; renderHero(); }
+    if (m.type === 'ready') { state.historyS = m.history; state.awaitingS = false; syncShadow(); }
+    else if (m.type === 'tick') { state.historyS.push(...m.rows); state.awaitingS = false; syncShadow(); renderHero(); }
   };
   state.awaitingS = true;
   post(wS, { type: 'init', n: state.n, seed: state.seed, levers: state.start, network: state.network, policyStart: policyStart() });
@@ -117,7 +119,13 @@ function setPlaying(p: boolean) {
 function stepOnce(count = 1) {
   if (state.awaiting) return;
   state.awaiting = true; post(wA, { type: 'step', count });
-  if (wS && !state.awaitingS && state.historyS.length < state.history.length + count + 1) { state.awaitingS = true; post(wS, { type: 'step', count }); }
+  syncShadow(count);
+}
+/** Keep the "as is" run level with the main run: step it by however far it is behind (never by a fixed amount, or it falls behind for good). */
+function syncShadow(extra = 0) {
+  if (!wS || state.awaitingS || !state.historyS.length) return;
+  const behind = state.history.length + extra - state.historyS.length;
+  if (behind > 0) { state.awaitingS = true; post(wS, { type: 'step', count: Math.min(behind, 60) }); }
 }
 
 // ---------------------------------------------------------------- indicators
@@ -180,7 +188,7 @@ function renderHero() {
   const hasS = changed && !!rs && rs.month === r.month;
   const lastS = hasS ? hs.slice(-12) : [];
   const imp = $('sfImpact');
-  if (!changed) imp.innerHTML = `<span class="muted">As is — switch on an intervention to see its impact here.</span>`;
+  if (!changed) imp.innerHTML = `<span class="muted">As is — switch on an intervention or move a lever to see its impact here.</span>`;
   else if (!hasS) imp.innerHTML = `<span class="muted">Comparing with "as is"…</span>`;
   else {
     const dp = r.target - rs.target, people = dp * ADULTS;
@@ -289,6 +297,7 @@ function setupCharts() {
 }
 
 function drawCharts() {
+  if (!H().length) return;
   const months = H().map((r) => r.month);
   const markers = state.events.map((e) => e.month);
   for (const c of charts) {
@@ -382,7 +391,7 @@ function init() {
   $('play').addEventListener('click', () => { if (state.history.length - 1 >= HORIZON) reset(); setPlaying(!state.playing); });
   $('step').addEventListener('click', () => { setPlaying(false); stepOnce(1); });
   $('reset').addEventListener('click', () => { if (state.mission) { const m = state.mission; state.mission = null; document.querySelector<HTMLButtonElement>(`button[data-mission="${m.id}"]`)?.click(); } else reset(); });
-  $('clearAll').addEventListener('click', () => { state.levers = { ...DEFAULT_LEVERS }; panel.set(state.levers); post(wA, { type: 'levers', levers: state.levers }); renderHero(); });
+  $('clearAll').addEventListener('click', () => { state.levers = { ...DEFAULT_LEVERS }; panel.set(state.levers, state.start); post(wA, { type: 'levers', levers: state.levers }); renderHero(); });
   $('speed').addEventListener('input', (e) => { state.speed = Number((e.target as HTMLInputElement).value); });
   $('share').addEventListener('click', async () => {
     const link = shareLink(); history.replaceState(null, '', link);
@@ -448,7 +457,7 @@ function exportCsv() {
   const lines = [cols.map(([k]) => k).join(',')];
   for (const r of state.history) lines.push(cols.map(([, f]) => { const v = f(r); return typeof v === 'number' ? +v.toPrecision(6) : v; }).join(','));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const on = INTERVENTIONS.filter((m) => state.levers[m.key]).map((m) => m.key).join('-') || 'as-is';
+  const on = INTERVENTION_KEYS.filter((k) => state.levers[k]).join('-') || (anyOn(state.levers) ? 'custom' : 'as-is');
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gambling-harm-${on}-seed${state.seed}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

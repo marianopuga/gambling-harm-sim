@@ -104,7 +104,7 @@ LOOPS = [
 ZONES = [
     ('mk', 20, 20, 530, 295, 'MARKET &amp; SOCIAL NORMS', 40, 46),
     ('hm', 570, 20, 610, 295, 'INDIVIDUAL HARM', 590, 46),
-    ('gv', 20, 510, 1160, 255, 'GOVERNMENT &amp; PUBLIC RESPONSE', 40, 536),
+    ('gv', 20, 510, 1160, 255, 'GOVERNMENT &amp; PUBLIC RESPONSE', 122, 536),
 ]
 
 esc = html.escape
@@ -570,3 +570,31 @@ if '--ts' in sys.argv:
         f.write(f'export const CLD_SVG = {json.dumps(svg_sim)};\n')
         f.write(f'export const LOOP_INFO: {{ id: string; name: string; text: string }}[] = {loops_js};\n')
     print('wrote', ts_path)
+
+if '--export' in sys.argv:
+    # standalone light page for a PNG: title, diagram, legend and loop names (rendered with headless Chrome)
+    exp_path = sys.argv[sys.argv.index('--export') + 1]
+    css = PAGE[PAGE.index('<style>') + len('<style>'):PAGE.index('</style>')]
+    legend = PAGE[PAGE.index('<ul class="legend">'):PAGE.index('</ul>', PAGE.index('<ul class="legend">')) + len('</ul>')]
+    loops_key = ' &nbsp;·&nbsp; '.join(f'<b>{lid}</b> {esc(name)}' for lid, _, _, _, name, _ in LOOPS)
+    html_out = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>{css}
+body {{ margin: 0; padding: 28px 32px 24px; background: #ffffff; }}
+.wrap {{ width: 1536px; display: grid; gap: 14px; }}
+.ttl {{ margin: 0; font: 700 28px/1.1 var(--font-display); color: var(--ink); }}
+.sub {{ margin: 4px 0 0; color: var(--muted); font-size: 15px; }}
+.wrap > svg {{ display: block; width: 100%; height: auto; }}
+.legend {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+.loopkey {{ margin: 0; font-size: 14px; color: var(--muted); }}
+.loopkey b {{ color: var(--ink); font-family: var(--font-display); }}
+</style></head><body><div class="wrap">
+<div><h1 class="ttl">Gambling harm in Australia: causal loop diagram</h1>
+<p class="sub">At-risk gamblers (PGSI 1+) is the stock. Market and social norms push people in, harm keeps them gambling, and awareness, help and regulation pull them back out.</p></div>
+{SVG}
+{legend}
+<p class="loopkey">{loops_key}</p>
+</div></body></html>'''
+    with open(exp_path, 'w', encoding='ascii') as f:
+        f.write(html_out.encode('ascii', 'xmlcharrefreplace').decode('ascii'))
+    print('wrote', exp_path)

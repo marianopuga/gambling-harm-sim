@@ -107,3 +107,15 @@ describe('timing', () => {
     expect(tail(early)).toBeLessThan(tail(late)); // acting earlier helps more
   }, 30_000);
 });
+
+describe('levers: what happens if a variable increases', () => {
+  it('more marketing or accessibility → more at risk; more help-seeking → longer waiting list; higher tax → more tax', () => {
+    const base = run({}, 96);
+    expect(tail(run({ marketing: 100 }, 96))).toBeGreaterThan(tail(base));
+    expect(tail(run({ accessibility: 100 }, 96))).toBeGreaterThan(tail(base));
+    // places are full, so more help-seeking lengthens the waiting list (capacity is the bottleneck)
+    expect(tail(run({ helpSeeking: 100 }, 96), (r) => r.queue)).toBeGreaterThan(tail(base, (r) => r.queue));
+    expect(tail(run({ taxRate: 50 }, 96), (r) => r.tax)).toBeGreaterThan(tail(base, (r) => r.tax));
+    expect(tail(run({ harm: 100 }, 96), (r) => r.socialCost)).toBeGreaterThan(tail(base, (r) => r.socialCost));
+  }, 60_000);
+});

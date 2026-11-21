@@ -1,5 +1,5 @@
 import { defaultParamValues, type ParamValues } from '../params';
-import { type Levers } from './levers';
+import { DEFAULT_LEVERS, type Levers } from './levers';
 import { clamp, hazardToProb, mulberry32 } from './rng';
 import { REGION_AVAILABILITY, project, sampleHome } from '../geo/australia';
 
@@ -75,7 +75,15 @@ export interface Row {
 }
 
 type Agg = ReturnType<Simulation['aggregate']>;
-interface InEffect { adCov: number; camp: number; aff: number; sup: number; threshold: number }
+interface InEffect { adCov: number; camp: number; aff: number; sup: number; threshold: number; v: LeverValues }
+type LeverValues = Record<NumKey, number>;
+type NumKey = Exclude<{ [K in keyof Levers]: Levers[K] extends number ? K : never }[keyof Levers], 'adBanYears' | 'affordabilityThreshold'>;
+const NUM_KEYS = (Object.keys(DEFAULT_LEVERS) as (keyof Levers)[]).filter((k) => typeof DEFAULT_LEVERS[k] === 'number' && k !== 'adBanYears' && k !== 'affordabilityThreshold') as NumKey[];
+const DEFAULT_V = Object.fromEntries(NUM_KEYS.map((k) => [k, DEFAULT_LEVERS[k] as number])) as LeverValues;
+/** Lever 50 = ×1; 0 = ×0.5, 100 = ×2. */
+const f2 = (x: number) => Math.pow(2, (x - 50) / 50);
+/** Softer lever response: 50 = ×1, 0/100 = ×exp(∓k). */
+const fe = (x: number, k: number) => Math.exp(k * (x - 50) / 50);
 
 const AD_STAGES = [
   '',
@@ -136,6 +144,9 @@ export class Simulation {
   private adBanSince = -1;
   private adStage = 0;
   private eff = { campaign: [0, 0, 0], affordability: [0, 0, 0], support: [0, 0, 0] };
+  /** Lever values in effect (after a third-order implementation delay). */
+  private effL = Object.fromEntries(NUM_KEYS.map((k) => [k, [DEFAULT_V[k], DEFAULT_V[k], DEFAULT_V[k]]])) as Record<NumKey, number[]>;
+  private cur: LeverValues = { ...DEFAULT_V };
   private initialLevers: Levers;
   // references frozen at the end of burn-in (the 2018 status quo)
   // per-state means of the harm cluster, so a person's multipliers compare them with others in the same risk state
@@ -244,7 +255,7 @@ export class Simulation {
   /** Exogenous online and sports-betting boom (2018 →): raises accessibility and marketing, 0..trendYears×rate. */
   trend(): number { return this.burning ? 0 : (this.P.trendPerYear / 100) * Math.min(this.month / 12, this.P.trendYears); }
   /** Gambling accessibility (0.5 = 2018): the online boom raises it, regulatory strength cuts it (B1). */
-  accessibility(T = this.trend()): number { return clamp(0.5 + T - this.P.a_regulation * (this.RS - 0.3), 0.05, 2); }
+  accessibility(T = this.trend()): number { return clamp(this.cur.accessibility / 100 + T - this.P.a_regulation * (this.RS - 0.3), 0.05, 2); }
 
   setLevers(l: Levers) { this.levers = { ...l }; }
 
@@ -252,7 +263,7 @@ export class Simulation {
   private interventions(): InEffect {
     const P = this.P;
     // burn-in settles the 2018 status quo: no interventions
-    if (this.burning) return { adCov: 0, camp: 0, aff: 0, sup: 0, threshold: this.levers.affordabilityThreshold };
+    if (this.burning) { this.cur = { ...DEFAULT_V }; return { adCov: 0, camp: 0, aff: 0, sup: 0, threshold: this.levers.affordabilityThreshold, v: this.cur }; }
     const L = this.month < this.policyStart ? this.initialLevers : this.levers;
     // ad ban: stage 1 now, then one stage every third of the phase-out, sponsorship last
     if (L.adBan) { if (this.adBanSince < 0) this.adBanSince = this.month; } else this.adBanSince = -1;
@@ -270,7 +281,15 @@ export class Simulation {
       s[0] += ((on ? 1 : 0) - s[0]) * rate; s[1] += (s[0] - s[1]) * rate; s[2] += (s[1] - s[2]) * rate;
       return s[2];
     };
+    const v = {} as LeverValues;
+    for (const k of NUM_KEYS) {
+      const st = this.effL[k];
+      st[0] += ((L[k] as number) - st[0]) * rate; st[1] += (st[0] - st[1]) * rate; st[2] += (st[1] - st[2]) * rate;
+      v[k] = st[2];
+    }
+    this.cur = v;
     return {
+      v,
       adCov: this.adCov,
       camp: delay('campaign', L.campaign),
       aff: delay('affordability', L.affordability),
@@ -319,21 +338,23 @@ export class Simulation {
     const iv = this.interventions();
     const T = this.trend();
     const A = this.accessibility(T);
-    const cA = A - 0.5, cM = this.M - 0.5, cE = this.SA - P.acceptanceAnchor;
+    const v = iv.v;
+    const cA = A - 0.5, cM = this.M - 0.5, cE = this.SA - P.acceptanceAnchor + (v.exposure - 50) / 200;
     // market & social norms → starting, quitting, entering risk, relapse
     // accessibility mostly changes how intensely people gamble; its effect on who starts is smaller
-    const startG = Math.exp(0.15 * P.b_accessibility * cA + P.b_marketing * cM + P.b_exposure * cE);
+    const startG = Math.exp(0.15 * P.b_accessibility * cA + P.b_marketing * cM + P.b_exposure * cE) * f2(v.participation);
     const quitG = Math.exp(-0.5 * P.b_exposure * cE);
-    const escG = P.escalationScale * Math.exp(0.45 * P.b_marketing * cM + 0.4 * P.b_accessibility * cA + 0.4 * P.b_exposure * cE);
+    const escG = P.escalationScale * Math.exp(0.45 * P.b_marketing * cM + 0.4 * P.b_accessibility * cA + 0.4 * P.b_exposure * cE) * fe(v.intensity, 0.5);
     const relapseG = Math.exp(P.b_accessibility * cA + 0.5 * P.b_marketing * cM);
     const youngMale = Math.exp(P.b_youngMenMarketing * cM);
     // treatment & counselling coverage relative to 2018: lowers harm by speeding de-escalation (TC → harm −)
     const severe = this.lastAgg ? this.lastAgg.severe : 1;
     const covRel = this.burning ? 1 : this.TC / Math.max(1, severe) / Math.max(1e-9, this.ref.cov);
     const covBoost = (1 + P.k_coverage * clamp(covRel - 1, -0.6, 3)) * (1 + P.supportBreadth * iv.sup);
+    const bCope = P.b_coping * v.coping / 50;
     const deescG = P.recoveryScale * Math.exp(-0.3 * P.b_accessibility * cA);
     // help-seeking: awareness, the campaign (asking for help is normal) and helplines
-    const helpG = Math.exp(P.b_awarenessHelp * (this.AW - 0.3)) * (1 + P.campaignHelp * iv.camp) * (1 + P.supportHelplines * iv.sup);
+    const helpG = Math.exp(P.b_awarenessHelp * (this.AW - 0.3)) * (1 + P.campaignHelp * iv.camp) * (1 + P.supportHelplines * iv.sup) * f2(v.helpSeeking);
     const flow = this.flow; flow.inflow = flow.outflow = flow.esc = flow.help = 0;
     const ref = this.ref;
 
@@ -353,7 +374,7 @@ export class Simulation {
 
       // the person's own harm cluster shapes their transitions (compared with 2018 people in the same state)
       const s0 = prev[i];
-      const copeM = Math.exp(P.b_coping * (this.cope[i] - ref.cope[s0])); // gambling to cope → escalation
+      const copeM = Math.exp(bCope * (this.cope[i] - ref.cope[s0])); // gambling to cope → escalation
       const isoM = Math.exp(-P.b_isolation * (this.iso[i] - ref.iso[s0])); // isolation → slower exit
       const stressEsc = Math.exp(P.b_stress * (this.fs[i] - ref.fs[s0]));
       const stressDe = Math.exp(-P.b_stress * (this.fs[i] - ref.fs[s0])); // less money lost → easier to step down
@@ -451,19 +472,21 @@ export class Simulation {
    */
   private personHarm(i: number, s: number, iv: InEffect) {
     const P = this.P;
-    const sev = s === LR ? P.harm_LR : s === MR ? P.harm_MR : s === PG || s === TX ? P.harm_PG : 0;
-    let loss = P.baseSpend * SPEND_STATE[s] * (1 + P.copingIntensity * this.cope[i]);
+    const v = iv.v;
+    const sev = (s === LR ? P.harm_LR : s === MR ? P.harm_MR : s === PG || s === TX ? P.harm_PG : 0) * f2(v.harm);
+    let loss = P.baseSpend * f2(v.expenditure) * SPEND_STATE[s] * (1 + P.copingIntensity * (v.coping / 50) * this.cope[i]);
+    if (s >= LR && s <= PG) loss *= fe(v.losses, 0.7);
     if (iv.aff > 0 && this.covered[i] && loss > iv.threshold) {
       const allowed = Math.max(iv.threshold, P.affordableShare * this.income[i]);
       if (loss > allowed) loss -= iv.aff * (loss - allowed);
     }
     this.loss[i] = loss;
-    let fsT = 1 - Math.exp(-(loss / this.income[i]) / P.stressScale);
+    let fsT = 1 - Math.exp(-(loss / this.income[i]) / (P.stressScale / fe(v.stress, 0.7)));
     if (s === MR || s === PG || s === TX) fsT *= 1 - P.supportStress * iv.sup;
     this.fs[i] += (fsT - this.fs[i]) / P.tau_stress;
-    this.dist[i] += (clamp(0.6 * sev / P.harm_PG + 0.4 * this.fs[i], 0, 1) - this.dist[i]) / P.tau_distress;
-    this.conf[i] += (0.8 * this.dist[i] - this.conf[i]) / P.tau_conflict;
-    this.iso[i] += (0.8 * this.conf[i] - this.iso[i]) / P.tau_isolation;
+    this.dist[i] += (clamp((0.6 * sev / P.harm_PG + 0.4 * this.fs[i]) * fe(v.distress, 0.5), 0, 1) - this.dist[i]) / P.tau_distress;
+    this.conf[i] += (clamp(0.8 * this.dist[i] * fe(v.conflict, 0.5), 0, 1) - this.conf[i]) / P.tau_conflict;
+    this.iso[i] += (clamp(0.8 * this.conf[i] * fe(v.isolation, 0.5), 0, 1) - this.iso[i]) / P.tau_isolation;
     this.cope[i] += (clamp(0.6 * this.fs[i] + 0.4 * this.iso[i], 0, 1) - this.cope[i]) / P.tau_coping;
   }
 
@@ -474,6 +497,7 @@ export class Simulation {
     let spend = 0, atRiskSpend = 0, units = 0, hLR = 0, hMR = 0, hPG = 0, queue = 0;
     let arN = 0, sFs = 0, sCope = 0, sDist = 0, sConf = 0, sIso = 0, spN = 0, sInt = 0, sLoss = 0;
     const regN = new Array(8).fill(0), regR = new Array(8).fill(0);
+    const hs = f2(this.cur.harm);
     const copeByState = new Float64Array(STATE_COUNT), isoByState = new Float64Array(STATE_COUNT), fsByState = new Float64Array(STATE_COUNT);
     for (let i = 0; i < n; i++) {
       const s = st[i];
@@ -485,12 +509,12 @@ export class Simulation {
       spend += this.loss[i];
       if (s >= LR && s <= PG) { atRiskSpend += this.loss[i]; sLoss += this.loss[i]; sInt += SPEND_STATE[s] * (1 + P.copingIntensity * this.cope[i]); spN++; }
       if (ar) { arN++; sFs += this.fs[i]; sCope += this.cope[i]; sDist += this.dist[i]; sConf += this.conf[i]; sIso += this.iso[i]; }
-      if (s === LR) { units += P.harm_LR; hLR += P.harm_LR; }
-      else if (s === MR) { units += P.harm_MR; hMR += P.harm_MR; }
-      else if (s === PG || s === TX) { units += P.harm_PG; hPG += P.harm_PG; }
+      if (s === LR) { units += P.harm_LR * hs; hLR += P.harm_LR * hs; }
+      else if (s === MR) { units += P.harm_MR * hs; hMR += P.harm_MR * hs; }
+      else if (s === PG || s === TX) { units += P.harm_PG * hs; hPG += P.harm_PG * hs; }
     }
     const expenditure = spend * scale;
-    const tax = expenditure * P.taxRate;
+    const tax = expenditure * this.cur.taxRate / 100;
     const k = Math.max(1, arN);
     for (let s = 0; s < STATE_COUNT; s++) { const c = Math.max(1, counts[s]); copeByState[s] /= c; isoByState[s] /= c; fsByState[s] /= c; }
     return {
@@ -513,27 +537,28 @@ export class Simulation {
     if (this.burning) { this.trackRefs(a); this.GS = P.servicesShare * a.tax; this.TC = this.GS / P.costPerPlace; return; }
     const ref = this.ref;
     // R1 and B1: participation makes gambling feel normal; public pressure and the campaign push it down (slow)
-    const saT = clamp(P.acceptanceAnchor + P.a_participation * (a.participation - ref.part) - P.a_pressure * (this.PP - 0.3) - P.campaignAcceptance * iv.camp, 0, 1);
+    const v = iv.v;
+    const saT = clamp(v.acceptance / 100 + P.a_participation * (a.participation - ref.part) - P.a_pressure * (this.PP - 0.3) - P.campaignAcceptance * iv.camp, 0, 1);
     this.SA += (saT - this.SA) / P.tau_acceptance;
     // R2: operators turn revenue into marketing; the online boom adds more; the ad ban removes it
-    const mT = (0.5 + T) * Math.pow(Math.max(1e-6, a.operatorRevenue / ref.OR), P.m_revenue) * (1 - (1 - P.adBanResidual) * iv.adCov);
+    const mT = (v.marketing / 100 + T) * Math.pow(Math.max(1e-6, a.operatorRevenue / ref.OR), P.m_revenue * v.revenue / 50) * (1 - (1 - P.adBanResidual) * iv.adCov);
     this.M += (mT - this.M) / P.tau_marketing;
     // gambling-related harm → awareness (delay) → public pressure → regulatory strength (delay)
-    const awT = clamp(0.3 * Math.pow(Math.max(1e-6, a.harmPerCap / ref.H), 0.7) + P.campaignAwareness * iv.camp + 0.05 * iv.sup, 0, 1);
+    const awT = clamp(0.3 * Math.pow(Math.max(1e-6, a.harmPerCap / ref.H), 0.7) + P.campaignAwareness * iv.camp + 0.05 * iv.sup + (v.awareness - 30) / 100, 0, 1);
     this.AW += (awT - this.AW) / P.tau_awareness;
-    this.PP += (clamp(0.3 + (this.AW - 0.3), 0, 1) - this.PP) / P.tau_pressure;
-    this.RS += (clamp(0.3 + (this.PP - 0.3), 0, 1) - this.RS) / P.tau_regulation;
+    this.PP += (clamp(0.3 + (this.AW - 0.3) + (v.pressure - 30) / 100, 0, 1) - this.PP) / P.tau_pressure;
+    this.RS += (clamp(0.3 + (this.PP - 0.3) + (v.regulation - 30) / 100, 0, 1) - this.RS) / P.tau_regulation;
     // gambling tax → government spend (budget delay) → treatment & counselling capacity (hiring delay); pressure adds funding
-    const gsT = P.servicesShare * this.ref.tax * Math.pow(Math.max(1e-6, a.tax / this.ref.tax), P.govSpendElasticity) + iv.sup * P.supportBudget / 12;
+    const gsT = (v.govSpend / 100) * this.ref.tax * Math.pow(Math.max(1e-6, a.tax / this.ref.tax), P.govSpendElasticity) + iv.sup * P.supportBudget / 12;
     this.GS += (gsT - this.GS) / P.tau_govSpend;
-    const tcT = (this.GS / P.costPerPlace) * Math.max(0, 1 + P.pressureCapacity * (this.PP - 0.3));
+    const tcT = (this.GS / P.costPerPlace) * f2(v.capacity) * Math.max(0, 1 + P.pressureCapacity * (this.PP - 0.3));
     this.TC += (tcT - this.TC) / P.tau_capacity;
   }
 
   private record(a: Agg, iv: InEffect) {
     const P = this.P, n = this.n, ref = this.ref;
     const counts = a.counts.map((c) => c / n);
-    const exposure = Math.exp(P.b_exposure * (this.SA - P.acceptanceAnchor) + P.b_peerStart * (a.participation - ref.part));
+    const exposure = Math.exp(P.b_exposure * (this.SA - P.acceptanceAnchor + (this.cur.exposure - 50) / 200) + P.b_peerStart * (a.participation - ref.part));
     this.history.push({
       month: this.month,
       counts,
@@ -598,13 +623,11 @@ export class Simulation {
       'At-risk gambling is up 20% since the start. The online wagering boom feeds the reinforcing loops: more participation makes gambling feel normal (R1) and more revenue buys more marketing (R2).');
     this.once('reg', r.regulation > 0.35, 'norms',
       `${year}: public pressure has turned into stronger regulation, cutting gambling accessibility (B1). It took years: awareness, pressure and lawmaking are all slow.`);
-    this.once('costtax', r.socialCost > 3 * r.tax && this.month > 1, 'fiscal',
-      'The social cost of gambling harm is more than 3× the tax it brings in. The state collects the revenue; families, health and justice systems pay the cost.');
     this.once('acc', Math.abs(r.acceptance - r0.acceptance) > 0.05, 'norms',
       `Social acceptance has moved by more than 5 points (${Math.round(r0.acceptance * 100)} → ${Math.round(r.acceptance * 100)}). This slow stock now amplifies or dampens everything else.`);
     this.once('taxdrop', r.tax < r0.tax * 0.8 && r0.tax > 0, 'fiscal',
       'Tax revenue is down 20%. Less gambling means less tax, and the share of tax spent on harm services shrinks with it.');
-    const lowModHarm = r.harmByGroup[0] + r.harmByGroup[1] > r.harmByGroup[2];
+    const lowModHarm = r.harmByGroup[0] + r.harmByGroup[1] > 1.25 * r.harmByGroup[2];
     this.once('paradox', lowModHarm && this.month > 3, 'paradox',
       'Prevention paradox: low- and moderate-risk gamblers now carry more total harm than high-risk gamblers, simply because there are many more of them.');
   }

@@ -1,5 +1,5 @@
 import { PARAMS, type ParamKey } from '../params';
-import { INTERVENTIONS } from '../model/levers';
+import { LEVER_META } from '../model/levers';
 import { LOOPS } from './cld';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -51,7 +51,8 @@ export function renderModelDoc(host: HTMLElement) {
     return `<tr><td><code>${k}</code></td><td>${p.value}</td><td>${esc(p.unit)}</td><td>${p.range[0]} – ${p.range[1]}</td><td>${esc(p.source)}</td><td class="conf-${p.confidence}">${p.confidence}</td></tr>`;
   }).join('');
   const vars = VARIABLES.map(([zone, name, how]) => `<tr><td>${esc(zone)}</td><td><b>${esc(name)}</b></td><td>${esc(how)}</td></tr>`).join('');
-  const ivs = INTERVENTIONS.map((m) => `<li><b>${m.n}. ${esc(m.title)}</b> (evidence: ${m.evidence}). ${esc(m.concept)} <i>In the model:</i> ${esc(m.acts)}. ${esc(m.evidenceNote)}</li>`).join('');
+  const ivs = LEVER_META.filter((m) => m.kind === 'toggle').map((m) => `<li><b>${esc(m.label)}</b> (evidence: ${m.evidence}). ${esc(m.tip)}</li>`).join('');
+  const levers = LEVER_META.filter((m) => m.kind === 'range').map((m) => `<tr><td>${esc(m.group)}</td><td><b>${esc(m.label)}</b></td><td>${esc(m.tip)}</td></tr>`).join('');
   host.innerHTML = `
   <h3>Built on the group's causal loop diagram</h3>
   <p>Every variable in the simulation is a box in the group's causal loop diagram (see the Causal loops tab). The only extra quantity is the <b>social cost of harm</b>, calculated as before.</p>
@@ -63,6 +64,9 @@ export function renderModelDoc(host: HTMLElement) {
   <h3>The four interventions</h3>
   <ul>${ivs}</ul>
   <p>All four start in the year chosen in “Interventions from”. The campaign, affordability checks and recovery support phase in over about six months. The ad ban follows its phase-out: inducements first, then social media at one third of the period, TV, radio and online ads at two thirds, and sponsorship at the end.</p>
+  <h3>Levers: what happens if a variable increases?</h3>
+  <p>Every variable has a lever in the left panel. The default is the 2018 status quo; moving it pushes that variable up or down and the rest of the system responds through the diagram's arrows.</p>
+  <div class="tbl"><table><thead><tr><th>Part of the diagram</th><th>Lever</th><th>What it changes</th></tr></thead><tbody>${levers}</tbody></table></div>
   <h3>Delays</h3>
   <p>The diagram marks the slow links with ‖. In the model: social acceptance moves over about 5 years; awareness of harm builds over about 2 years; regulation follows public pressure over about 3 years; government spend follows tax revenue after a budget cycle (1 year); treatment & counselling places take about a year to build; social isolation builds over about a year after family conflict.</p>
   <h3>How a person changes state</h3>
