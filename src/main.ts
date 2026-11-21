@@ -187,7 +187,7 @@ function renderKpis() {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const mean = (rows: Row[], f: (r: Row) => number) => rows.reduce((a, r) => a + f(r), 0) / Math.max(1, rows.length);
-/** The stock-and-flow panel and the three prevention goals (12-month averages; flows are noisy month to month). */
+/** The stock-and-flow panel and the three goals: fewer in, less harm, more out (12-month averages; flows are noisy month to month). */
 function renderHero() {
   const h = state.history, r = h[h.length - 1]; if (!r) return;
   const last = h.slice(-12), base = baseFlows(), r0 = baseRow(), by = state.policyYear;
@@ -216,10 +216,10 @@ function renderHero() {
     const cls = dp < -0.0005 ? 'good' : dp > 0.0005 ? 'bad' : '';
     imp.innerHTML = `<span>As is: <b>${fmtPct(rs.target, 1)}</b></span><span>Your policies: <b>${fmtPct(r.target, 1)}</b></span><span class="${cls}"><b>${Math.abs(dp) < 0.0005 ? 'no difference yet' : `${fmtPeople(Math.abs(people))} ${dp < 0 ? 'fewer' : 'more'} adults at risk`}</b></span>`;
   }
-  const g = (name: string, title: string, now: number, asIs: number, b0: number, fmt: (v: number) => string, what: string) => {
+  const g = (name: string, title: string, now: number, asIs: number, b0: number, fmt: (v: number) => string, what: string, up = false) => {
     const pct = (a: number, b: number) => (b > 0 ? a / b - 1 : NaN);
     const sign = (d: number) => `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}%`;
-    const tone = (d: number) => (!Number.isFinite(d) ? '' : d < -0.03 ? 'good' : d > 0.03 ? 'bad' : '');
+    const tone = (d: number) => (!Number.isFinite(d) ? '' : (up ? -d : d) < -0.03 ? 'good' : (up ? -d : d) > 0.03 ? 'bad' : '');
     let impact: string;
     if (!changed) impact = `<span class="gi muted">as is (no changes)</span>`;
     else if (!hasS || !lastS.length) impact = `<span class="gi muted">comparing…</span>`;
@@ -228,12 +228,13 @@ function renderHero() {
     const hist = Number.isFinite(dy) ? (r.month === r0.month ? `start of ${by}` : `${sign(dy)} vs ${by}`) : 'baseline…';
     return `<div class="goal"><span class="gk">${name}</span><span class="gt">${title}</span><span class="gv">${fmt(now)}</span>${impact}<span class="gd">${what} · ${hist}</span></div>`;
   };
-  const sev = (x: Row) => x.modHigh / Math.max(1e-9, x.target);
+  const cost = (x: Row) => x.socialCost * 12;
+  const rate = (out: number, x: Row) => out / Math.max(1, x.target * ADULTS); // share of the stock that leaves per year
   if (!hasFlows) { $('goals').innerHTML = `<div class="goal"><span class="gd">Running the model…</span></div>`; return; }
   $('goals').innerHTML = [
-    g('Goal 1', 'Prevent escalation', fesc, mean(lastS, (x) => x.escalations), mean(base, (x) => x.escalations), (v) => `${fmtPeople(v)}/yr`, 'people moving low → moderate → high'),
-    g('Goal 2', 'Reduce severity', sev(r), rs ? sev(rs) : NaN, sev(r0), (v) => `${(v * 100).toFixed(0)}% of at-risk`, 'share at moderate or high risk'),
-    g('Goal 3', 'Prevent people becoming at risk', fin, mean(lastS, (x) => x.inflow), mean(base, (x) => x.inflow), (v) => `${fmtPeople(v)}/yr`, 'new at-risk adults per year'),
+    g('Goal 1', 'Fewer adults entering risk', fin, mean(lastS, (x) => x.inflow), mean(base, (x) => x.inflow), (v) => `${fmtPeople(v)}/yr`, 'adults who start being at risk'),
+    g('Goal 2', 'Less harm (current and new)', cost(r), rs ? cost(rs) : NaN, cost(r0), (v) => `${fmtMoney(v)}/yr`, 'social cost of harm, all at-risk adults'),
+    g('Goal 3', 'More people recovering', rate(fout, r), rs ? rate(mean(lastS, (x) => x.outflow), rs) : NaN, rate(mean(base, (x) => x.outflow), r0), (v) => `${(v * 100).toFixed(0)}% of at-risk/yr`, `${fmtPeople(fout)} adults leave risk per year`, true),
   ].join('');
 }
 

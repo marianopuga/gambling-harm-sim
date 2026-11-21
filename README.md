@@ -5,10 +5,10 @@ An interactive, NetLogo-style simulation for a *Nature of Systems* course, centr
 ## Problem statement
 The prevalence of at-risk gambling among Australian adults increased from **7.3% in 2018 to 9.8% in 2022** across low-, moderate- and high-risk categories (HILDA: 3.7 → 4.9% low, 2.5 → 3.1% moderate, 1.1 → 1.8% high). Gambling also generates substantial revenue for operators and state and territory governments, creating competing incentives between maintaining gambling activity and implementing harm reduction. The challenge is to prevent people progressing into higher-risk categories while reducing harm across **all** levels of risk.
 
-**The stock** is *at-risk gamblers* (PGSI 1+). Its **inflow** is adults who start being at risk; its **outflow** is adults who leave risk (natural recovery, early detection, support, treatment, quitting). Three prevention goals:
-1. **Prevent escalation** (low → moderate → high) — early detection, early support.
-2. **Reduce severity** for those already at moderate/high risk — mandatory loss limits, affordability checks (licensed channels only).
-3. **Prevent people becoming at risk at all** — the tobacco playbook: advertising bans, age verification.
+**The stock** is *at-risk gamblers* (PGSI 1+). Its **inflow** is adults who start being at risk; its **outflow** is adults who leave risk (natural recovery, early detection, support, treatment, quitting). Three goals:
+1. **Fewer adults entering risk** (the inflow) — the tobacco playbook: advertising bans, age verification.
+2. **Less harm, for current and new at-risk adults** (social cost of harm) — loss limits, affordability checks, early detection to stop escalation.
+3. **More people recovering** (the outflow, as a share of the stock) — early support, treatment capacity, self-exclusion.
 
 ## Policies from 2018, 2022 or 2026
 The run always starts in January 2018. **Policies from** (top bar) sets when your levers switch on. Default 2018 asks *what if we had acted in 2018?*. With 2022 or 2026 the run opens in that January with history already played (status quo, calibrated to HILDA): the numbers you see are that year's, and every change is measured against it — *what if we act now?* A dashed line on every chart marks the switch. The default seed (54) tracks HILDA closely (7.5% → 9.8%); averaged over seeds the model gives 7.2% → 9.8%.
@@ -67,7 +67,7 @@ R1 Peer contagion · R2 Normalization · R3 Fiscal capture · R4 Lobbying · R5 
 Every constant is in [`src/params.ts`](src/params.ts) with unit, range, source (or `ASSUMPTION`) and confidence.
 
 ## Scenario presets
-Australia today (status quo) · Boom unchecked · Tobacco playbook: full ad ban (goal 3) · Catch it early (goal 1) · Mandatory loss limits (goal 2) · Public-health package (all goals) · Revenue-dependent state · Prohibition · Integrated addiction services. Every run starts in January 2018 and the preset phases in, so delays are visible.
+Australia today (status quo) · Boom unchecked · Tobacco playbook: full ad ban (goal 1) · Catch it early (goals 2 and 3) · Mandatory loss limits (goal 2) · Public-health package (all goals) · Revenue-dependent state · Prohibition · Integrated addiction services. Every run starts in January 2018 and the preset phases in, so delays are visible.
 
 20-year results (at-risk share in 2038, one seed): status quo ≈ 15%, boom unchecked ≈ 23%, full ad ban ≈ 7.6%, catch it early ≈ 14%, loss limits ≈ 14% (but offshore share ≈ 27%), public-health package ≈ 3.4%, prohibition ≈ 9% (100% offshore).
 

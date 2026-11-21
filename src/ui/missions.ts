@@ -21,7 +21,7 @@ const yr = (m: number) => 2018 + Math.floor(m / 12);
 
 export const MISSIONS: Mission[] = [
   {
-    id: 'entry', title: 'Goal 3 · The tobacco playbook',
+    id: 'entry', title: 'Goal 1 · The tobacco playbook',
     brief: 'Using only advertising and age rules, cut the number of adults who start being at risk each year by 30% — by 2030.',
     teaches: 'Prevention works on the inflow. It is slow (a generation, like tobacco) but it is the only goal that shrinks the stock for good.',
     scenario: 'status-quo', allowed: ['marketing', 'adBan', 'ageVerification'],
@@ -34,7 +34,7 @@ export const MISSIONS: Mission[] = [
     },
   },
   {
-    id: 'escalation', title: 'Goal 1 · Catch it early',
+    id: 'escalation', title: 'Goal 2 · Catch it early',
     brief: 'Using only Health & social levers, cut escalations (low → moderate → high) by 30% within 8 years.',
     teaches: 'Early detection acts where most people are: the low-risk group. Watch the treatment queue — help-seeking can outrun capacity.',
     scenario: 'status-quo', allowed: ['Health & social'],
@@ -57,6 +57,21 @@ export const MISSIONS: Mission[] = [
       if (now <= r0.modHigh * 0.7 && ill < 0.25 && m <= 120) return { state: 'ok', text: `Done in ${yr(m)}: ${pct(r0.modHigh)} → ${pct(now)}, offshore ${pct(ill)}.` };
       if (m > 120) return { state: 'fail', text: `2028 passed at ${pct(now)} (needed ≤ ${pct(r0.modHigh * 0.7)}).` };
       return { state: 'active', text: `${yr(m)}: moderate + high ${pct(now)} — target ≤ ${pct(r0.modHigh * 0.7)} · offshore ${pct(ill)}` };
+    },
+  },
+  {
+    id: 'recovery', title: 'Goal 3 · Help people out',
+    brief: 'Using only Health & social levers, raise the share of at-risk adults who leave risk each year by 30% within 8 years.',
+    teaches: 'The outflow depends on capacity: more help-seeking without more treatment places just builds a queue (B2). Early detection lets people leave before harm grows.',
+    scenario: 'status-quo', allowed: ['Health & social'],
+    check: (h) => {
+      if (h.length < 25) return { state: 'active', text: 'Collecting a baseline (first 2 years)…' };
+      const rate = (rows: Row[]) => avg(rows, (r) => r.outflow) / Math.max(1, avg(rows, (r) => r.target) * 20.8e6);
+      const base = rate(h.slice(1, 25)), now = rate(h.slice(-12)), m = h.length - 1;
+      const p0 = (x: number) => `${(x * 100).toFixed(1)}%`;
+      if (now >= base * 1.3 && m <= 96) return { state: 'ok', text: `Done in ${yr(m)}: ${p0(base)} → ${p0(now)} of at-risk adults leave per year.` };
+      if (m > 96) return { state: 'fail', text: `2026 passed at ${p0(now)}/yr (needed ≥ ${p0(base * 1.3)}). Check the treatment queue.` };
+      return { state: 'active', text: `${yr(m)}: ${p0(now)} of at-risk adults leave per year — target ≥ ${p0(base * 1.3)}` };
     },
   },
   {
