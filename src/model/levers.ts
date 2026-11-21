@@ -68,19 +68,6 @@ const r = (key: keyof Levers, label: string, group: LeverMeta['group'], evidence
   ({ key, label, group, kind: 'range', min: 0, max: 100, step: 1, evidence, tip, ...extra });
 
 export const LEVER_META: LeverMeta[] = [
-  { key: 'adBan', label: '1 · Ban gambling ads', group: 'Our interventions', kind: 'toggle', evidence: 'medium',
-    tip: 'Phase out all gambling advertising: inducements and social media first, sponsorship last. Cuts marketing exposure. Murphy inquiry (2023) recommended a 3-year phased ban.' },
-  { key: 'adBanYears', label: 'Ad ban phase-out', group: 'Our interventions', kind: 'select', options: ['1 yr', '2 yrs', '3 yrs', '4 yrs', '5 yrs'], values: [1, 2, 3, 4, 5], evidence: 'medium',
-    tip: 'How many years the ad ban takes, from inducements (now) to sponsorship (last).' },
-  { key: 'campaign', label: '2 · Anti-gambling campaign', group: 'Our interventions', kind: 'toggle', evidence: 'low',
-    tip: 'Flip the "mates and footy" image; humour aimed at the industry, not the gambler. Lowers social acceptance, raises awareness and help-seeking.' },
-  { key: 'affordability', label: '3 · Affordability checks', group: 'Our interventions', kind: 'toggle', evidence: 'low',
-    tip: 'Above the monthly loss threshold, operators verify ability to pay; if not, deposits stop. Cuts losses and financial stress.' },
-  { key: 'affordabilityThreshold', label: 'Check when losses pass', group: 'Our interventions', kind: 'select', options: ['$500', '$1,000', '$2,000'], values: [500, 1000, 2000], evidence: 'low',
-    tip: 'Monthly losses that trigger an affordability check.' },
-  { key: 'support', label: '4 · Recovery support programs', group: 'Our interventions', kind: 'toggle', evidence: 'medium',
-    tip: 'Counselling, helplines, legal, financial and psychological support ($150M a year). More treatment & counselling places, more help-seeking.' },
-
   r('acceptance', 'Social acceptance', 'Market & social norms', 'low', 'How normal gambling feels (cultural anchor). Actual acceptance is a slow stock (~5 years) pushed by participation (R1) and pulled down by public pressure.', { unit: '%' }),
   r('exposure', 'Exposure to gambling', 'Market & social norms', 'low', 'Everyday exposure: friends who bet, venues, sport. More exposure → more people start gambling and more become at risk.'),
   r('marketing', 'Marketing exposure', 'Market & social norms', 'medium', 'Base level of gambling advertising (50 = 2018). Raises starting and escalation, especially for young men.'),
@@ -105,6 +92,19 @@ export const LEVER_META: LeverMeta[] = [
   r('helpSeeking', 'Help-seeking', 'Government & public response', 'medium', 'How readily people at risk seek help (50 = 2018; only ~1 in 5 with problem gambling ever do).'),
   r('pressure', 'Public pressure to reform', 'Government & public response', 'low', 'Pressure on government to act (30 = 2018). Lowers social acceptance and funds services.'),
   r('regulation', 'Regulatory strength', 'Government & public response', 'medium', 'Strength of gambling regulation (30 = 2018). Builds over ~3 years and cuts accessibility.'),
+
+  { key: 'adBan', label: '1 · Ban gambling ads', group: 'Our interventions', kind: 'toggle', evidence: 'medium',
+    tip: 'Phase out all gambling advertising: inducements and social media first, sponsorship last. Cuts marketing exposure. Murphy inquiry (2023) recommended a 3-year phased ban.' },
+  { key: 'adBanYears', label: 'Ad ban phase-out', group: 'Our interventions', kind: 'select', options: ['1 yr', '2 yrs', '3 yrs', '4 yrs', '5 yrs'], values: [1, 2, 3, 4, 5], evidence: 'medium',
+    tip: 'How many years the ad ban takes, from inducements (now) to sponsorship (last).' },
+  { key: 'campaign', label: '2 · Anti-gambling campaign', group: 'Our interventions', kind: 'toggle', evidence: 'low',
+    tip: 'Flip the "mates and footy" image; humour aimed at the industry, not the gambler. Lowers social acceptance, raises awareness and help-seeking.' },
+  { key: 'affordability', label: '3 · Affordability checks', group: 'Our interventions', kind: 'toggle', evidence: 'low',
+    tip: 'Above the monthly loss threshold, operators verify ability to pay; if not, deposits stop. Cuts losses and financial stress.' },
+  { key: 'affordabilityThreshold', label: 'Check when losses pass', group: 'Our interventions', kind: 'select', options: ['$500', '$1,000', '$2,000'], values: [500, 1000, 2000], evidence: 'low',
+    tip: 'Monthly losses that trigger an affordability check.' },
+  { key: 'support', label: '4 · Recovery support programs', group: 'Our interventions', kind: 'toggle', evidence: 'medium',
+    tip: 'Counselling, helplines, legal, financial and psychological support ($150M a year). More treatment & counselling places, more help-seeking.' },
 ];
 
 export const isChanged = (a: Levers, b: Levers) => JSON.stringify(a) !== JSON.stringify(b);
