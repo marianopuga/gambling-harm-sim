@@ -1,13 +1,12 @@
 import './style.css';
-import { DEFAULT_LEVERS, type Levers } from './model/levers';
+import { DEFAULT_LEVERS, INTERVENTIONS, type Levers } from './model/levers';
 import type { Row, SimEvent } from './model/sim';
 import type { MCResult, SensRow } from './model/batch';
-import { SCENARIOS, scenarioLevers } from './scenarios/presets';
 import { applyStrings, t } from './ui/strings';
 import { LineChart, drawTornado, cssVar, type Series } from './ui/charts';
 import { MapView } from './ui/mapView';
 import { HILDA, PARAMS } from './params';
-import { LeversPanel } from './ui/leversPanel';
+import { InterventionsPanel } from './ui/interventionsPanel';
 import { CLD } from './ui/cld';
 import { MISSIONS, winStatus, type Mission } from './ui/missions';
 import { renderModelDoc } from './ui/modelDoc';
@@ -16,69 +15,55 @@ import type { ToWorker } from './worker';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const HORIZON = 240;
 const SPEEDS = [1, 3, 6, 12, 30]; // months per second
-const STRUCTURAL: (keyof Levers)[] = ['startDependency', 'earmarking'];
 const ADULTS = PARAMS.adultPopulation.value;
 const GOAL = HILDA[2018].total;
 
 // ---------------------------------------------------------------- state
 const state = {
-  scenario: 'status-quo',
   levers: { ...DEFAULT_LEVERS } as Levers,
-  start: { ...DEFAULT_LEVERS } as Levers,
-  // seed 54 tracks HILDA closely (7.4% → 9.9%); see scripts/seeds.ts
-  seed: 54, n: 3000, network: 'smallworld' as 'smallworld' | 'grid',
+  start: { ...DEFAULT_LEVERS } as Levers, // the status quo: no interventions
+  // seed tracks HILDA closely in a single run; see scripts/seeds.ts
+  seed: 58, n: 3000, network: 'smallworld' as 'smallworld' | 'grid',
   policyYear: 2018,
   history: [] as Row[], events: [] as SimEvent[],
-  compare: '' as string, historyB: [] as Row[],
-  historyS: [] as Row[], // hidden "as is" run: same seed, starting levers, no changes
-  playing: false, awaiting: false, awaitingB: false, awaitingS: false, acc: 0, speed: 3,
+  historyS: [] as Row[], // hidden "as is" run: same seed, no interventions
+  playing: false, awaiting: false, awaitingS: false, acc: 0, speed: 3,
   mission: null as Mission | null,
 };
 
 const policyStart = () => (state.policyYear - 2018) * 12;
-/** The reference row: the month policies start (Jan 2018 by default, or the chosen policy year). */
+/** The reference row: the month interventions start (Jan 2018 by default, or the chosen year). */
 const baseRow = () => state.history[Math.min(policyStart(), state.history.length - 1)];
-/** 12 months of flows to compare against: the first year (2018) or the year before the policy year. */
+/** 12 months of flows to compare against: the opening month, or the year before the policy year. */
 const baseFlows = () => (policyStart() > 0 ? state.history.slice(policyStart() - 11, policyStart() + 1) : state.history.slice(0, 1));
-const startFor = (policy: Levers): Levers => {
-  const s = { ...DEFAULT_LEVERS };
-  for (const k of STRUCTURAL) (s as unknown as Record<string, unknown>)[k] = policy[k];
-  return s;
-};
+const anyOn = (l: Levers) => INTERVENTIONS.some((m) => l[m.key]);
 
 // ---------------------------------------------------------------- URL state
 function loadHash() {
   try {
     const raw = location.hash.slice(1); if (!raw) return;
     const o = JSON.parse(decodeURIComponent(escape(atob(raw))));
-    if (o.sc && SCENARIOS.some((s) => s.id === o.sc)) state.scenario = o.sc;
-    state.levers = { ...scenarioLevers(state.scenario), ...(o.l ?? {}) };
+    if (o.l && typeof o.l === 'object') state.levers = { ...DEFAULT_LEVERS, ...o.l };
     if (Number.isFinite(o.s)) state.seed = o.s; if ([500, 1000, 2000, 3000, 5000].includes(o.n)) state.n = o.n;
     if (o.net === 'grid' || o.net === 'smallworld') state.network = o.net;
     if ([2018, 2022, 2026].includes(o.py)) state.policyYear = o.py;
   } catch { /* ignore malformed links */ }
 }
 function shareLink(): string {
-  const base = scenarioLevers(state.scenario); const diff: Partial<Levers> = {};
-  for (const k of Object.keys(state.levers) as (keyof Levers)[]) if (state.levers[k] !== base[k]) (diff as Record<string, unknown>)[k] = state.levers[k];
-  const enc = btoa(unescape(encodeURIComponent(JSON.stringify({ sc: state.scenario, l: diff, s: state.seed, n: state.n, net: state.network, py: state.policyYear }))));
+  const enc = btoa(unescape(encodeURIComponent(JSON.stringify({ l: state.levers, s: state.seed, n: state.n, net: state.network, py: state.policyYear }))));
   return `${location.origin}${location.pathname}#${enc}`;
 }
 
 // ---------------------------------------------------------------- workers
 const mkWorker = () => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 const wA = mkWorker();
-let wB: Worker | null = null;
 let wS: Worker | null = null;
 let wX: Worker | null = null;
 const post = (w: Worker, m: ToWorker) => w.postMessage(m);
 
 const view = new MapView($<HTMLCanvasElement>('agentCanvas'), $('agentTip'));
-const panel = new LeversPanel($('leverGroups'), (l) => {
-  state.levers = l; post(wA, { type: 'levers', levers: l });
-  if (wB && state.mission === null) { /* comparison B keeps its own scenario */ }
-}, (k) => cld.highlightLever(k));
-const cld = new CLD($('cld'));
+const panel = new InterventionsPanel($('ivList'), (l) => { state.levers = l; post(wA, { type: 'levers', levers: l }); renderHero(); });
+new CLD($('cld'));
 
 wA.onmessage = (ev) => {
   const m = ev.data;
@@ -101,19 +86,17 @@ wA.onmessage = (ev) => {
 
 function reset() {
   setPlaying(false);
-  state.start = startFor(state.levers);
   state.awaiting = true;
   post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.start, network: state.network, policyStart: policyStart() });
-  panel.set(state.levers, state.start);
+  panel.set(state.levers);
   const note = $('policyNote');
   note.hidden = state.policyYear === 2018;
-  note.textContent = `The run opens in January ${state.policyYear}: 2018–${state.policyYear - 1} has already happened (status quo, calibrated to HILDA). Your levers act from now on, and changes are measured against ${state.policyYear}.`;
-  resetCompare();
+  note.textContent = `The run opens in January ${state.policyYear}: 2018–${state.policyYear - 1} has already happened (no interventions, calibrated to HILDA). Your interventions act from now on, and changes are measured against ${state.policyYear}.`;
   resetShadow();
   renderEvents();
 }
 
-/** The "as is" baseline: identical start and seed, but the levers never move. Differences = the impact of your changes. */
+/** The "as is" baseline: identical start and seed, no interventions. Differences = the impact of your interventions. */
 function resetShadow() {
   wS?.terminate(); state.historyS = [];
   wS = mkWorker();
@@ -126,20 +109,6 @@ function resetShadow() {
   post(wS, { type: 'init', n: state.n, seed: state.seed, levers: state.start, network: state.network, policyStart: policyStart() });
 }
 
-function resetCompare() {
-  wB?.terminate(); wB = null; state.historyB = [];
-  if (!state.compare) return;
-  wB = mkWorker();
-  const policyB = scenarioLevers(state.compare);
-  wB.onmessage = (ev) => {
-    const m = ev.data;
-    if (m.type === 'ready') { state.historyB = m.history; state.awaitingB = false; wB!.postMessage({ type: 'levers', levers: policyB }); }
-    else if (m.type === 'tick') { state.historyB.push(...m.rows); state.awaitingB = false; }
-  };
-  state.awaitingB = true;
-  post(wB, { type: 'init', n: state.n, seed: state.seed, levers: startFor(policyB), network: state.network, policyStart: policyStart() });
-}
-
 function setPlaying(p: boolean) {
   state.playing = p;
   const b = $('play'); b.innerHTML = p ? `❚❚ <span>${t('pause')}</span>` : `▶ <span>${t('play')}</span>`; b.setAttribute('aria-label', p ? t('pause') : t('play'));
@@ -148,36 +117,38 @@ function setPlaying(p: boolean) {
 function stepOnce(count = 1) {
   if (state.awaiting) return;
   state.awaiting = true; post(wA, { type: 'step', count });
-  if (wB && !state.awaitingB && state.historyB.length < state.history.length + count + 1) { state.awaitingB = true; post(wB, { type: 'step', count }); }
   if (wS && !state.awaitingS && state.historyS.length < state.history.length + count + 1) { state.awaitingS = true; post(wS, { type: 'step', count }); }
 }
 
-// ---------------------------------------------------------------- KPIs
+// ---------------------------------------------------------------- indicators
 const fmtPct = (v: number, d = 2) => `${(v * 100).toFixed(d)}%`;
 const fmtMoney = (v: number) => (Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(1)}bn` : `$${(v / 1e6).toFixed(0)}M`);
 const fmtPeople = (v: number) => (v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : v.toFixed(0));
+const fmtIdx = (v: number) => `×${v.toFixed(2)}`;
+const score = (v: number) => `${Math.round(v * 100)} / 100`;
+const AD_STAGE = (cov: number) => (cov < 0.05 ? 'no ad ban' : cov > 0.95 ? 'ad ban complete' : `ad ban: ${Math.round(cov * 100)}% of ads removed`);
 
 function renderKpis() {
   const h = state.history, r = h[h.length - 1], r0 = baseRow(); if (!r || !r0) return;
-  const b = state.historyB[Math.min(state.historyB.length - 1, h.length - 1)];
   const win = winStatus(h);
   const ratio = r.tax > 0 ? r.socialCost / r.tax : Infinity;
-  const tiles: { k: string; v: string; d: string; cls?: string; dir?: number; bv?: string }[] = [
-    { k: t('kTarget'), v: fmtPct(r.target, 1), d: win.won ? t('won') : `${fmtPeople(r.target * ADULTS)} adults · ${t('goal')}${win.streak ? ` · ${win.streak} mo` : ''}`, cls: 'target' + (win.won ? ' win' : ''), dir: r.target - r0.target, bv: b && fmtPct(b.target, 1) },
+  const tiles: { k: string; v: string; d: string; cls?: string; dir?: number }[] = [
+    { k: 'At-risk gamblers', v: fmtPct(r.target, 1), d: win.won ? t('won') : `${fmtPeople(r.target * ADULTS)} adults · ${t('goal')}${win.streak ? ` · ${win.streak} mo` : ''}`, cls: 'target' + (win.won ? ' win' : ''), dir: r.target - r0.target },
     { k: 'Low · moderate · high', v: `${(r.counts[2] * 100).toFixed(1)} · ${(r.counts[3] * 100).toFixed(1)} · ${((r.counts[4] + r.counts[5]) * 100).toFixed(1)}`, d: 'HILDA 2018: 3.7 · 2.5 · 1.1 (%)', cls: 'compact', dir: r.modHigh - r0.modHigh },
-    { k: 'Men aged 18-34 at risk', v: fmtPct(r.youngMenAtRisk, 1), d: `vs ${fmtPct(r.othersAtRisk, 1)} of everyone else`, dir: r.youngMenAtRisk - r0.youngMenAtRisk, bv: b && fmtPct(b.youngMenAtRisk, 1) },
-    { k: 'Social cost / yr', v: fmtMoney(r.socialCost * 12), d: Number.isFinite(ratio) ? `${ratio.toFixed(1)}× the tax it raises` : 'no tax raised', dir: r.socialCost - r0.socialCost, bv: b && fmtMoney(b.socialCost * 12) },
-    { k: t('kTax'), v: fmtMoney(r.tax * 12), d: `${fmtPct(r.dependency, 1)} of state tax revenue`, dir: -(r.tax - r0.tax), bv: b && fmtMoney(b.tax * 12) },
-    { k: t('kBudget'), v: fmtMoney(r.budgetBalance), d: r.crisis ? '⚠ budget crisis' : 'buffer for reforms', dir: -(r.budgetBalance - r0.budgetBalance) },
-    { k: t('kResistance'), v: fmtPct(r.resistance, 0), d: 'waters down harm-reducing reforms', dir: r.resistance - r0.resistance, bv: b && fmtPct(b.resistance, 0) },
-    { k: 'Offshore channel', v: fmtPct(r.illegalShare, 0), d: 'of spend, no protections', dir: r.illegalShare - r0.illegalShare, bv: b && fmtPct(b.illegalShare, 0) },
-    { k: t('kQueue'), v: fmtPeople(r.queue), d: `${fmtPeople(r.capacity)} treatment places`, dir: r.queue - r0.queue },
+    { k: 'Social cost of harm / yr', v: fmtMoney(r.socialCost * 12), d: Number.isFinite(ratio) ? `${ratio.toFixed(1)}× the tax it raises` : 'no tax raised', dir: r.socialCost - r0.socialCost },
+    { k: 'Gambling expenditure / yr', v: fmtMoney(r.expenditure * 12), d: `${fmtPct(r.atRiskRevenueShare, 0)} of it from at-risk gamblers`, dir: r.expenditure - r0.expenditure },
+    { k: 'Tax → government spend', v: fmtMoney(r.tax * 12), d: `${fmtMoney(r.govSpend * 12)} a year on harm services`, dir: -(r.govSpend - r0.govSpend) },
+    { k: 'Social acceptance', v: score(r.acceptance), d: `exposure to gambling ${fmtIdx(r.exposure)} vs 2018`, dir: r.acceptance - r0.acceptance },
+    { k: 'Marketing exposure', v: `${fmtIdx(r.marketing)} vs 2018`, d: AD_STAGE(r.adBanCoverage), dir: r.marketing - r0.marketing },
+    { k: 'Financial stress (at risk)', v: score(r.financialStress), d: `losses $${Math.round(r.losses).toLocaleString('en-AU')} / month per at-risk gambler`, dir: r.financialStress - r0.financialStress },
+    { k: 'Treatment & counselling', v: `${fmtPeople(r.capacity)} places`, d: `${fmtPeople(r.queue)} waiting · help-seeking ${fmtIdx(r.helpSeeking)}`, dir: -(r.capacity - r0.capacity) },
+    { k: 'Public pressure → regulation', v: score(r.pressure), d: `regulatory strength ${score(r.regulation)}`, dir: -(r.regulation - r0.regulation) },
   ];
   $('kpis').innerHTML = tiles.map((x) => {
     const arrow = x.dir === undefined || Math.abs(x.dir) < 1e-9 ? '' : `<span class="${x.dir > 0 ? 'up' : 'down'}">${x.dir > 0 ? '▲' : '▼'}</span>`;
-    return `<div class="kpi ${x.cls ?? ''}"><div class="k">${x.k}</div><div class="v">${x.v} ${arrow}</div><div class="d">${x.d}${state.compare && x.bv ? ` · <b>B:</b> ${x.bv}` : ''}</div></div>`;
+    return `<div class="kpi ${x.cls ?? ''}"><div class="k">${x.k}</div><div class="v">${x.v} ${arrow}</div><div class="d">${x.d}</div></div>`;
   }).join('');
-  $('kpiMini').textContent = `at risk ${fmtPct(r.target, 1)} · men 18-34 ${fmtPct(r.youngMenAtRisk, 1)} · social cost ${fmtMoney(r.socialCost * 12)} · tax ${fmtMoney(r.tax * 12)} · resistance ${fmtPct(r.resistance, 0)}`;
+  $('kpiMini').textContent = `at risk ${fmtPct(r.target, 1)} · social cost ${fmtMoney(r.socialCost * 12)} · acceptance ${Math.round(r.acceptance * 100)} · marketing ${fmtIdx(r.marketing)} · tax ${fmtMoney(r.tax * 12)}`;
   const yr = 2018 + Math.floor(r.month / 12), mo = r.month % 12;
   $('month').textContent = `${MONTHS[mo]} ${yr} · ${t('month')} ${r.month}/${HORIZON}`;
   $('year').textContent = String(yr);
@@ -203,25 +174,25 @@ function renderHero() {
   const parts = [[r.counts[2], 2, 'low'], [r.counts[3], 3, 'moderate'], [r.counts[4] + r.counts[5], 4, 'high']] as const;
   $('sfBars').innerHTML = parts.map(([v, c, l]) => `<i style="width:${(v / Math.max(1e-9, r.target)) * 100}%;background:var(--s${c})" title="${l}: ${fmtPct(v, 1)}"></i>`).join('');
   $('sfEsc').innerHTML = last.length ? `<span><i class="dot" style="background:var(--s2)"></i>low <b>${fmtPct(r.counts[2], 1)}</b></span><span><i class="dot" style="background:var(--s3)"></i>moderate <b>${fmtPct(r.counts[3], 1)}</b></span><span><i class="dot" style="background:var(--s4)"></i>high <b>${fmtPct(r.counts[4] + r.counts[5], 1)}</b></span><span>↑ escalating <b>${fmtPeople(fesc)}</b>/yr</span><span>→ starting treatment <b>${fmtPeople(fhelp)}</b>/yr</span>` : '';
-  // impact of your changes: compare with the "as is" run over the same months
-  const changed = JSON.stringify(state.levers) !== JSON.stringify(state.start);
+  // impact of your interventions: compare with the "as is" run over the same months
+  const changed = anyOn(state.levers);
   const hs = state.historyS.slice(0, h.length), rs = hs[hs.length - 1];
   const hasS = changed && !!rs && rs.month === r.month;
   const lastS = hasS ? hs.slice(-12) : [];
   const imp = $('sfImpact');
-  if (!changed) imp.innerHTML = `<span class="muted">As is — move a lever or pick a scenario to see its impact here.</span>`;
+  if (!changed) imp.innerHTML = `<span class="muted">As is — switch on an intervention to see its impact here.</span>`;
   else if (!hasS) imp.innerHTML = `<span class="muted">Comparing with "as is"…</span>`;
   else {
     const dp = r.target - rs.target, people = dp * ADULTS;
     const cls = dp < -0.0005 ? 'good' : dp > 0.0005 ? 'bad' : '';
-    imp.innerHTML = `<span>As is: <b>${fmtPct(rs.target, 1)}</b></span><span>Your policies: <b>${fmtPct(r.target, 1)}</b></span><span class="${cls}"><b>${Math.abs(dp) < 0.0005 ? 'no difference yet' : `${fmtPeople(Math.abs(people))} ${dp < 0 ? 'fewer' : 'more'} adults at risk`}</b></span>`;
+    imp.innerHTML = `<span>As is: <b>${fmtPct(rs.target, 1)}</b></span><span>With your interventions: <b>${fmtPct(r.target, 1)}</b></span><span class="${cls}"><b>${Math.abs(dp) < 0.0005 ? 'no difference yet' : `${fmtPeople(Math.abs(people))} ${dp < 0 ? 'fewer' : 'more'} adults at risk`}</b></span>`;
   }
   const g = (name: string, title: string, now: number, asIs: number, b0: number, fmt: (v: number) => string, what: string, up = false) => {
     const pct = (a: number, b: number) => (b > 0 ? a / b - 1 : NaN);
     const sign = (d: number) => `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}%`;
     const tone = (d: number) => (!Number.isFinite(d) ? '' : (up ? -d : d) < -0.03 ? 'good' : (up ? -d : d) > 0.03 ? 'bad' : '');
     let impact: string;
-    if (!changed) impact = `<span class="gi muted">as is (no changes)</span>`;
+    if (!changed) impact = `<span class="gi muted">as is (no interventions)</span>`;
     else if (!hasS || !lastS.length) impact = `<span class="gi muted">comparing…</span>`;
     else { const d = pct(now, asIs); impact = `<span class="gi ${tone(d)}">${Math.abs(d) < 0.005 ? 'same as "as is" so far' : `${sign(d)} vs as is (${fmt(asIs)})`}</span>`; }
     const dy = base.length ? pct(now, b0) : NaN;
@@ -258,6 +229,7 @@ function addChart(title: string, opts: ConstructorParameters<typeof LineChart>[1
 const col = (k: number) => cssVar(`--s${k}`);
 const H = () => state.history;
 const pctFmt = (v: number) => `${(v * 100).toFixed(1)}%`;
+const r0 = () => state.history[0];
 function setupCharts() {
   const hilda = [{ x: 0, y: HILDA[2018].total, label: 'HILDA 2018 · 7.3%' }, { x: 48, y: HILDA[2022].total, label: 'HILDA 2022 · 9.8%' }];
   addChart('The stock: at-risk gamblers (% of adults)', { stacked: true, yFmt: pctFmt, goal: { value: GOAL, label: 'back to 2018' }, points: hilda }, () => [
@@ -265,41 +237,54 @@ function setupCharts() {
     { label: 'Moderate (3-7)', color: col(3), data: H().map((r) => r.counts[3]) },
     { label: 'Low (1-2)', color: col(2), data: H().map((r) => r.counts[2]) },
   ]);
-  addChart('Flows in and out of risk (adults / yr, 12-mo avg)', { yFmt: (v) => fmtPeople(v) }, () => {
-    const sm = (f: (r: Row) => number) => H().map((_, i) => (i === 0 ? NaN : mean(H().slice(Math.max(1, i - 11), i + 1), f)));
+  addChart('Flows: entering and leaving risk (adults / yr, 12-mo avg)', { yFmt: (v) => fmtPeople(v) }, () => {
+    const sm = (f: (r: Row) => number) => H().map((_, i) => mean(H().slice(Math.max(0, i - 11), i + 1), f));
     return [
-      { label: 'Inflow: become at risk', color: cssVar('--bad'), data: sm((r) => r.inflow), width: 2.5 },
-      { label: 'Outflow: leave risk', color: cssVar('--good'), data: sm((r) => r.outflow), width: 2.5 },
+      { label: 'Entering at-risk gambling', color: cssVar('--bad'), data: sm((r) => r.inflow), width: 2.5 },
+      { label: 'Exit from risk', color: cssVar('--good'), data: sm((r) => r.outflow), width: 2.5 },
       { label: 'Escalations', color: col(4), data: sm((r) => r.escalations), dash: [5, 3] },
       { label: 'Start treatment', color: col(6), data: sm((r) => r.helpAdmissions), dash: [2, 3] },
     ];
   });
-  addChart('Who is at risk: men 18-34 vs everyone else', { yFmt: pctFmt }, () => {
-    const s: Series[] = [
-      { label: 'Men 18-34', color: cssVar('--accent'), data: H().map((r) => r.youngMenAtRisk), width: 2.5 },
-      { label: 'Everyone else', color: col(0), data: H().map((r) => r.othersAtRisk), width: 2 },
-    ];
-    if (state.compare) s.push({ label: `B: ${SCENARIOS.find((x) => x.id === state.compare)?.name} (all adults)`, color: cssVar('--ink'), dash: [5, 4], data: state.historyB.slice(0, H().length).map((r) => r.target), width: 1.6 });
-    return s;
-  });
-  addChart('Who pays: social cost vs tax revenue (AUD / yr)', { yFmt: (v) => fmtMoney(v) }, () => [
+  addChart('Market & social norms (× 2018)', { yMin: 0, yFmt: (v) => `×${v.toFixed(1)}` }, () => [
+    { label: 'Marketing exposure', color: col(4), data: H().map((r) => r.marketing), width: 2.5 },
+    { label: 'Gambling accessibility', color: col(3), data: H().map((r) => r.accessibility), width: 2 },
+    { label: 'Exposure to gambling', color: col(1), data: H().map((r) => r.exposure) },
+    { label: 'Social acceptance', color: col(6), data: H().map((r) => r.acceptance / r0().acceptance), width: 2 },
+    { label: 'Gambling participation', color: col(0), data: H().map((r) => r.participation / r0().participation), dash: [4, 3] },
+  ]);
+  addChart('Individual harm (average among at-risk gamblers, 0-1)', { yMin: 0, yMax: 1, yFmt: (v) => v.toFixed(1) }, () => [
+    { label: 'Financial stress', color: col(4), data: H().map((r) => r.financialStress), width: 2.5 },
+    { label: 'Gambling as coping', color: col(3), data: H().map((r) => r.coping) },
+    { label: 'Emotional distress', color: col(6), data: H().map((r) => r.distress) },
+    { label: 'Family conflict', color: col(1), data: H().map((r) => r.conflict) },
+    { label: 'Social isolation', color: col(0), data: H().map((r) => r.isolation), dash: [4, 3] },
+  ]);
+  addChart('Who pays: harm, spending, tax and services (AUD / yr)', { yFmt: (v) => fmtMoney(v) }, () => [
     { label: 'Social cost of harm', color: cssVar('--bad'), data: H().map((r) => r.socialCost * 12), width: 2.5 },
-    { label: 'Gambling losses (GGR)', color: col(1), data: H().map((r) => (r.ggrLegal + r.ggrIllegal) * 12) },
-    { label: 'Tax revenue', color: col(5), data: H().map((r) => r.tax * 12), width: 2.5 },
-    { label: 'Programme cost', color: col(6), data: H().map((r) => r.programCost * 12), dash: [4, 3] },
+    { label: 'Gambling expenditure', color: col(1), data: H().map((r) => r.expenditure * 12) },
+    { label: 'Gambling tax revenue', color: col(5), data: H().map((r) => r.tax * 12), width: 2.5 },
+    { label: 'Government spend on harm services', color: col(6), data: H().map((r) => r.govSpend * 12), dash: [4, 3] },
+  ]);
+  addChart('Public response (0-1)', { yMin: 0, yMax: 1, yFmt: (v) => v.toFixed(1) }, () => [
+    { label: 'Awareness of harm', color: col(5), data: H().map((r) => r.awareness), width: 2 },
+    { label: 'Public pressure to reform', color: col(3), data: H().map((r) => r.pressure), width: 2 },
+    { label: 'Regulatory strength', color: cssVar('--ink'), data: H().map((r) => r.regulation), width: 2.5 },
+  ]);
+  addChart('Treatment & counselling (people)', { yMin: 0, yFmt: (v) => fmtPeople(v) }, () => [
+    { label: 'Treatment & counselling places', color: col(6), data: H().map((r) => r.capacity), width: 2.5 },
+    { label: 'Waiting for treatment', color: cssVar('--bad'), data: H().map((r) => r.queue), dash: [4, 3] },
+  ]);
+  addChart('Your interventions in effect (0-1, after delays)', { yMin: 0, yMax: 1, yFmt: (v) => v.toFixed(1) }, () => [
+    { label: '1 · Ad ban (share of ads removed)', color: col(4), data: H().map((r) => r.adBanCoverage), width: 2.5 },
+    { label: '2 · Anti-gambling campaign', color: col(6), data: H().map((r) => r.campaign), width: 2 },
+    { label: '3 · Affordability checks', color: col(3), data: H().map((r) => r.affordability), width: 2 },
+    { label: '4 · Recovery support programs', color: col(5), data: H().map((r) => r.support), width: 2 },
   ]);
   addChart('Harm by risk group — low risk matters too (prevention paradox)', { stacked: true, yFmt: (v) => v.toFixed(0) }, () => [
     { label: 'High', color: col(4), data: H().map((r) => r.harmByGroup[2]) },
     { label: 'Moderate', color: col(3), data: H().map((r) => r.harmByGroup[1]) },
     { label: 'Low', color: col(2), data: H().map((r) => r.harmByGroup[0]) },
-  ]);
-  addChart('Slow stocks & politics', { yMin: 0, yMax: 1, yFmt: (v) => v.toFixed(2) }, () => [
-    { label: 'Social acceptance', color: col(3), data: H().map((r) => r.acceptance) },
-    { label: 'Public awareness', color: col(5), data: H().map((r) => r.awareness) },
-    { label: 'Industry influence', color: col(6), data: H().map((r) => r.influence) },
-    { label: 'Political resistance', color: cssVar('--bad'), data: H().map((r) => r.resistance), width: 2.5 },
-    { label: 'Fiscal dependency ×5', color: cssVar('--ink'), data: H().map((r) => Math.min(1, r.dependency * 5)), dash: [4, 3] },
-    { label: 'Offshore share', color: col(0), data: H().map((r) => r.illegalShare) },
   ]);
 }
 
@@ -308,7 +293,7 @@ function drawCharts() {
   const markers = state.events.map((e) => e.month);
   for (const c of charts) {
     c.chart.opts.markers = markers;
-    c.chart.opts.vline = state.policyYear > 2018 ? { x: policyStart(), label: `policies from ${state.policyYear}` } : undefined;
+    c.chart.opts.vline = state.policyYear > 2018 ? { x: policyStart(), label: `interventions from ${state.policyYear}` } : undefined;
     const s = c.series();
     c.chart.draw(s, months);
     const leg = s.map((x) => `<span><i style="background:${x.color}"></i>${x.label}</span>`).join('');
@@ -329,12 +314,10 @@ function renderMissions() {
   host.querySelectorAll<HTMLButtonElement>('button[data-mission]').forEach((b) => b.addEventListener('click', () => {
     const m = MISSIONS.find((x) => x.id === b.dataset.mission)!;
     if (state.mission?.id === m.id) { state.mission = null; panel.lock(undefined); renderMissions(); return; }
-    state.mission = m; state.scenario = m.scenario; $<HTMLSelectElement>('scenario').value = m.scenario;
+    state.mission = m;
     state.policyYear = 2018; $<HTMLSelectElement>('policyYear').value = '2018'; // missions are scored from 2018
-    state.levers = scenarioLevers(m.scenario);
-    // missions start *in* the scenario: its levers are the starting point
-    reset(); state.start = { ...state.levers }; post(wA, { type: 'init', n: state.n, seed: state.seed, levers: state.levers, network: state.network, policyStart: 0 }); resetShadow();
-    panel.set(state.levers, state.start); panel.lock(m.allowed); renderMissions();
+    state.levers = { ...DEFAULT_LEVERS };
+    reset(); panel.lock(m.allowed); renderMissions();
   }));
 }
 
@@ -362,14 +345,12 @@ function drawMc(res?: MCResult, ms?: number) {
 function drawSens() { if (lastSens) drawTornado($<HTMLCanvasElement>('sensChart'), lastSens.slice(0, 16), (v) => pctFmt(v)); }
 
 // ---------------------------------------------------------------- render loop
-let lastCld = 0;
 function renderAll(full: boolean) {
   renderKpis();
   if (full) renderEvents();
   for (const c of charts) c.chart.dirty = true;
-  if (state.mission) renderMissionsStatus();
+  if (state.mission && !$('tab-missions').hidden) renderMissions();
 }
-function renderMissionsStatus() { if (!$('tab-missions').hidden) renderMissions(); }
 
 let last = performance.now();
 function frame(now: number) {
@@ -380,7 +361,6 @@ function frame(now: number) {
   }
   view.draw();
   if (!$('tab-charts').hidden && charts.some((c) => c.chart.dirty)) drawCharts();
-  if (!$('tab-cld').hidden && now - lastCld > 500) { cld.update(state.history[state.history.length - 1], state.history[0]); lastCld = now; }
   requestAnimationFrame(frame);
 }
 
@@ -388,15 +368,6 @@ function frame(now: number) {
 function init() {
   applyStrings();
   loadHash();
-  const sel = $<HTMLSelectElement>('scenario'), cmp = $<HTMLSelectElement>('compare');
-  for (const s of SCENARIOS) { sel.add(new Option(s.name, s.id)); cmp.add(new Option(s.name, s.id)); }
-  sel.value = state.scenario;
-  sel.title = SCENARIOS.find((s) => s.id === state.scenario)?.description ?? '';
-  sel.addEventListener('change', () => {
-    state.scenario = sel.value; state.levers = scenarioLevers(sel.value); sel.title = SCENARIOS.find((s) => s.id === sel.value)?.description ?? '';
-    state.mission = null; panel.lock(undefined); reset(); renderMissions();
-  });
-  cmp.addEventListener('change', () => { state.compare = cmp.value; reset(); });
   const py = $<HTMLSelectElement>('policyYear'); py.value = String(state.policyYear);
   py.addEventListener('change', () => { state.policyYear = Number(py.value); if (state.mission) { state.mission = null; panel.lock(undefined); renderMissions(); } reset(); });
   const kw = $<HTMLDetailsElement>('kpiWrap');
@@ -411,6 +382,7 @@ function init() {
   $('play').addEventListener('click', () => { if (state.history.length - 1 >= HORIZON) reset(); setPlaying(!state.playing); });
   $('step').addEventListener('click', () => { setPlaying(false); stepOnce(1); });
   $('reset').addEventListener('click', () => { if (state.mission) { const m = state.mission; state.mission = null; document.querySelector<HTMLButtonElement>(`button[data-mission="${m.id}"]`)?.click(); } else reset(); });
+  $('clearAll').addEventListener('click', () => { state.levers = { ...DEFAULT_LEVERS }; panel.set(state.levers); post(wA, { type: 'levers', levers: state.levers }); renderHero(); });
   $('speed').addEventListener('input', (e) => { state.speed = Number((e.target as HTMLInputElement).value); });
   $('share').addEventListener('click', async () => {
     const link = shareLink(); history.replaceState(null, '', link);
@@ -428,8 +400,6 @@ function init() {
   view.refreshColors();
   $('ovHeat').addEventListener('change', (e) => (view.overlays.heat = (e.target as HTMLInputElement).checked));
   $('ovYoung').addEventListener('change', (e) => (view.overlays.young = (e.target as HTMLInputElement).checked));
-  $('ovSud').addEventListener('change', (e) => (view.overlays.sud = (e.target as HTMLInputElement).checked));
-  $('ovIllegal').addEventListener('change', (e) => (view.overlays.illegal = (e.target as HTMLInputElement).checked));
   $('ovLinks').addEventListener('change', (e) => (view.overlays.links = (e.target as HTMLInputElement).checked));
   $('toggleLevers').addEventListener('click', () => {
     const el = $('levers'); const c = el.classList.toggle('collapsed');
@@ -463,13 +433,23 @@ function init() {
 }
 
 function exportCsv() {
-  const cols = ['month', 'date', 'atRisk', 'youngMenAtRisk', 'othersAtRisk', 'inflowPerYear', 'outflowPerYear', 'escalationsPerYear', 'socialCostPerMonth', 'nonGambler', 'noRisk', 'lowRisk', 'moderateRisk', 'problem', 'inTreatment', 'inRecovery', 'target', 'harmPer1000', 'ggrLegal', 'ggrIllegal', 'tax', 'programCost',
-    'atRiskRevenueShare', 'acceptance', 'awareness', 'influence', 'dependency', 'resistance', 'illegalShare', 'budgetBalance', 'queue', 'capacity', 'sudAmongPG', 'affectedOthers', 'crisis'];
-  const lines = [cols.join(',')];
-  for (const r of state.history) lines.push([r.month, `${2018 + Math.floor(r.month / 12)}-${String((r.month % 12) + 1).padStart(2, '0')}`, r.target, r.youngMenAtRisk, r.othersAtRisk, r.inflow, r.outflow, r.escalations, r.socialCost, ...r.counts, r.target, r.harm, r.ggrLegal, r.ggrIllegal, r.tax, r.programCost, r.atRiskRevenueShare, r.acceptance, r.awareness,
-    r.influence, r.dependency, r.resistance, r.illegalShare, r.budgetBalance, r.queue, r.capacity, r.sudAmongPG, r.affectedOthers, r.crisis ? 1 : 0].map((v) => (typeof v === 'number' ? +v.toPrecision(6) : v)).join(','));
+  const cols: [string, (r: Row) => number | string][] = [
+    ['month', (r) => r.month], ['date', (r) => `${2018 + Math.floor(r.month / 12)}-${String((r.month % 12) + 1).padStart(2, '0')}`],
+    ['atRiskGamblers', (r) => r.target], ['lowRisk', (r) => r.counts[2]], ['moderateRisk', (r) => r.counts[3]], ['highRisk', (r) => r.counts[4]], ['inTreatment', (r) => r.counts[5]],
+    ['enteringPerYear', (r) => r.inflow], ['exitPerYear', (r) => r.outflow], ['escalationsPerYear', (r) => r.escalations], ['startTreatmentPerYear', (r) => r.helpAdmissions],
+    ['socialAcceptance', (r) => r.acceptance], ['exposureIndex', (r) => r.exposure], ['marketingIndex', (r) => r.marketing], ['accessibilityIndex', (r) => r.accessibility],
+    ['participation', (r) => r.participation], ['expenditurePerMonth', (r) => r.expenditure], ['operatorRevenuePerMonth', (r) => r.operatorRevenue], ['atRiskShareOfSpend', (r) => r.atRiskRevenueShare],
+    ['intensityIndex', (r) => r.intensity], ['lossesPerAtRiskGambler', (r) => r.losses], ['financialStress', (r) => r.financialStress], ['coping', (r) => r.coping],
+    ['distress', (r) => r.distress], ['familyConflict', (r) => r.conflict], ['isolation', (r) => r.isolation], ['harmPer1000', (r) => r.harm], ['socialCostPerMonth', (r) => r.socialCost],
+    ['taxPerMonth', (r) => r.tax], ['govSpendPerMonth', (r) => r.govSpend], ['programCostPerMonth', (r) => r.programCost], ['awareness', (r) => r.awareness], ['helpSeeking', (r) => r.helpSeeking],
+    ['publicPressure', (r) => r.pressure], ['regulatoryStrength', (r) => r.regulation], ['treatmentPlaces', (r) => r.capacity], ['waiting', (r) => r.queue],
+    ['adBanCoverage', (r) => r.adBanCoverage], ['campaign', (r) => r.campaign], ['affordabilityChecks', (r) => r.affordability], ['recoverySupport', (r) => r.support],
+  ];
+  const lines = [cols.map(([k]) => k).join(',')];
+  for (const r of state.history) lines.push(cols.map(([, f]) => { const v = f(r); return typeof v === 'number' ? +v.toPrecision(6) : v; }).join(','));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gambling-harm-${state.scenario}-seed${state.seed}.csv`; a.click();
+  const on = INTERVENTIONS.filter((m) => state.levers[m.key]).map((m) => m.key).join('-') || 'as-is';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gambling-harm-${on}-seed${state.seed}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 

@@ -1,16 +1,16 @@
 /** All interface strings. Add a `es` block with the same keys to translate the UI. */
 export const STRINGS = {
   en: {
-    tagline: 'Australia 2018 → 2038. Stop people becoming at risk, stop escalation, reduce harm — without breaking the system.',
+    tagline: 'Australia 2018 → 2038, built on the group causal loop diagram. Fewer people entering risk, less harm, more people recovering.',
     scenario: 'Scenario', play: 'Play', pause: 'Pause', step: 'Step', reset: 'Reset', speed: 'Speed', settings: 'Settings',
     agents: 'Agents', seed: 'Seed', network: 'Network', compareWith: 'Compare with', share: 'Copy link', csv: 'Export CSV', theme: 'Toggle theme',
-    levers: 'Levers', hide: 'Hide', show: 'Show',
-    leverHint: 'Every run starts in January 2018 (HILDA: 7.3% of adults at risk). Policies apply from the year chosen in “Policies from”. Changes phase in through ~9-month implementation delays, and political resistance can water down harm-reducing reforms.',
+    levers: 'Interventions', hide: 'Hide', show: 'Show',
+    leverHint: 'Switch on any of the four interventions. They start in the year chosen in “Interventions from” and phase in over about six months (the ad ban follows its own phase-out). Every run is compared with an “as is” run with no interventions.',
     population: 'Population', ovSud: 'Alcohol/drug disorder ring', ovIllegal: 'Offshore operator (hollow)', ovLinks: 'Long-range social ties',
     why: 'Why did that happen?', noEvents: 'Press Play. Notable events will be explained here as they emerge.',
     tabCharts: 'Charts', tabCld: 'Causal loops', tabAnalysis: 'Uncertainty & sensitivity', tabMissions: 'Missions', tabModel: 'Model & sources',
-    mcTitle: 'Monte Carlo (20 seeds)', mcHint: 'Runs your current policy 20 times from the same start with different random seeds. The band shows the 5th–95th percentile of at-risk gambling (low + moderate + high).',
-    sensTitle: 'Sensitivity (tornado)', sensHint: 'Each uncertain parameter is moved ±25% while everything else stays fixed. Bars show the resulting at-risk share after 10 years under your current policy (5 seeds each, common random numbers). Lever sensitivities (b_…) only matter once you move levers away from the status quo.',
+    mcTitle: 'Monte Carlo (20 seeds)', mcHint: 'Runs your current interventions 20 times from the same start with different random seeds. The band shows the 5th–95th percentile of at-risk gambling (low + moderate + high).',
+    sensTitle: 'Sensitivity (tornado)', sensHint: 'Each uncertain parameter is moved ±25% while everything else stays fixed. Bars show the resulting at-risk share after 10 years with your current interventions (5 seeds each, common random numbers). Intervention parameters only matter once that intervention is switched on.',
     run: 'Run', running: 'Running…',
     disclaimerTitle: 'Educational model, not a forecast.',
     disclaimer: 'Calibrated to HILDA (2018, 2022), Australian gambling statistics and the Victorian social-cost study, plus stated assumptions (see Model & sources). Use it to explore system behaviour — feedback, delays and trade-offs — not to forecast Australia.',

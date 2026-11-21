@@ -21,7 +21,7 @@ export class MapView {
   private flash: Float32Array | null = null;
   private regionStats: number[] = [];
   private regionStats0: number[] = [];
-  overlays = { sud: false, illegal: true, links: false, heat: true, young: false };
+  overlays = { sud: false, illegal: false, links: false, heat: true, young: false };
   private colors: string[] = [];
   private heat = document.createElement('canvas');
   private heatGrid = new Float32Array(0);

@@ -1,108 +1,93 @@
 # Gambling Harm Systems Lab · Australia
 
-An interactive, NetLogo-style simulation for a *Nature of Systems* course, centred on Australia (2018 → 2038). You play the policymaker: pull market, fiscal, health and regulatory levers to **reduce the number of Australians at risk from gambling (low, moderate and high risk)** — without triggering a budget crisis, an offshore-market surge or a political backlash.
+An interactive, NetLogo-style simulation for a *Nature of Systems* course, centred on Australia (2018 → 2038) and **built on the group's causal loop diagram**: every variable in the model is a box in that diagram, plus the social cost of harm. You switch on four interventions and watch what they do to the number of Australians at risk from gambling (low, moderate and high risk).
 
 ## Problem statement
-The prevalence of at-risk gambling among Australian adults increased from **7.3% in 2018 to 9.8% in 2022** across low-, moderate- and high-risk categories (HILDA: 3.7 → 4.9% low, 2.5 → 3.1% moderate, 1.1 → 1.8% high). Gambling also generates substantial revenue for operators and state and territory governments, creating competing incentives between maintaining gambling activity and implementing harm reduction. The challenge is to prevent people progressing into higher-risk categories while reducing harm across **all** levels of risk.
+The prevalence of at-risk gambling among Australian adults increased from **7.3% in 2018 to 9.8% in 2022** across low-, moderate- and high-risk categories (HILDA: 3.7 → 4.9% low, 2.5 → 3.1% moderate, 1.1 → 1.8% high). Gambling also generates substantial revenue for operators and state and territory governments. The challenge is to prevent people progressing into higher-risk categories while reducing harm across **all** levels of risk.
 
-**The stock** is *at-risk gamblers* (PGSI 1+). Its **inflow** is adults who start being at risk; its **outflow** is adults who leave risk (natural recovery, early detection, support, treatment, quitting). Three goals:
-1. **Fewer adults entering risk** (the inflow) — the tobacco playbook: advertising bans, age verification.
-2. **Less harm, for current and new at-risk adults** (social cost of harm) — loss limits, affordability checks, early detection to stop escalation.
-3. **More people recovering** (the outflow, as a share of the stock) — early support, treatment capacity, self-exclusion.
+**The stock** is *at-risk gamblers* (PGSI 1+). Its **inflow** is *entering at-risk gambling* (PGSI 0 → 1+); its **outflow** is *exit from risk* (PGSI 1+ → 0). Three goals:
+1. **Fewer adults entering risk** (the inflow).
+2. **Less harm, for current and new at-risk adults** (the social cost of harm).
+3. **More people recovering** (the outflow, as a share of the stock).
 
-## Policies from 2018, 2022 or 2026
-The run always starts in January 2018. **Policies from** (top bar) sets when your levers switch on. Default 2018 asks *what if we had acted in 2018?*. With 2022 or 2026 the run opens in that January with history already played (status quo, calibrated to HILDA): the numbers you see are that year's, and every change is measured against it — *what if we act now?* A dashed line on every chart marks the switch. The default seed (54) tracks HILDA closely (7.5% → 9.8%); averaged over seeds the model gives 7.2% → 9.8%.
+## The four interventions
+Each is a tag you switch on; the evidence rating and its sources sit under each one.
+
+| # | Intervention | Acts on (in the diagram) | Evidence |
+|---|---|---|---|
+| 1 | **Ban gambling ads**: phased out over 1-5 years (inducements → social media → TV, radio and online → sponsorship) | Marketing exposure ↓ | medium |
+| 2 | **Anti-gambling campaign**: humour aimed at the industry, not the gambler | Social acceptance ↓, awareness ↑, help-seeking ↑ | low |
+| 3 | **Affordability checks**: deposits stop when losses pass $500 / $1,000 / $2,000 a month and the person cannot afford it | Gambling losses ↓ → financial stress ↓ | low |
+| 4 | **Recovery support programs**: counselling, helplines, legal, financial and psychological support ($150M a year) | Government spend ↑ → treatment & counselling capacity ↑ | medium |
+
+Results in 2038 with interventions from 2018 (average of 6 runs):
+
+| | At risk 2038 | Social cost / yr |
+|---|---|---|
+| None ("as is") | 15.2% | $119bn |
+| 1 · Ad ban (3 years) | 8.3% | $50bn |
+| 2 · Campaign | 13.2% | $102bn |
+| 3 · Affordability checks | 15.5% | $115bn (spending −26%) |
+| 4 · Recovery support | 12.9% | $71bn |
+| All four | 4.8% | $15bn |
+
+Affordability checks mainly protect the heaviest losers' money: they move people from high to moderate risk rather than out of risk, and the tax they take away also shrinks the budget for harm services.
+
+## Interventions from 2018, 2022 or 2026
+The run always starts in January 2018. **Interventions from** (top bar) sets when your interventions switch on. With 2022 or 2026 the run opens in that January with history already played (no interventions, calibrated to HILDA), and every change is measured against that year. A hidden "as is" run with the same seed shows the impact of your interventions in the stock panel and the three goals.
 
 ## What you see
-- **The stock panel**: live inflow and outflow, the stock split into low/moderate/high, and the three goals measured against 2018.
-- **Map of Australia**: each dot ≈ 7,000 adults placed where Australians live; dots light up and turn orange/red as people move into risk, and a heat map shows where at-risk gambling concentrates. Each state shows its live at-risk share (pokies density differs by state).
-- **Charts**: the stock vs HILDA 2018/2022, flows in and out, men 18-34 vs everyone else, social cost vs tax revenue, harm by risk group, slow stocks & politics.
+- **The stock panel**: live inflow and outflow, the stock split into low/moderate/high, and the three goals against "as is" and against the start year.
+- **Indicators**: the diagram's variables (social acceptance, marketing exposure, gambling expenditure, tax → government spend, financial stress, treatment & counselling, public pressure → regulation) plus the social cost of harm.
+- **Map of Australia**: each dot ≈ 7,000 adults placed where Australians live; a heat map shows where at-risk gambling concentrates.
+- **Charts**: the stock vs HILDA 2018/2022, flows, market & social norms, individual harm, who pays, public response, treatment & counselling, your interventions in effect, and harm by risk group.
+- **Causal loops**: the group's diagram, with delays marked ‖ and six loops you can trace one at a time.
 
-> **Educational model, not a forecast.** It combines published estimates with clearly labelled assumptions to explore feedback, delays and trade-offs. It does not predict any real country.
-
-## What students should discover
-1. Interventions act with delays; naive policies can oscillate or backfire.
-2. A state that depends on gambling revenue resists harm-reduction policy (Policy Resistance / Shifting the Burden).
-3. Prohibition without enforcement pushes play to unregulated channels (Fixes that Fail).
-4. Most total harm sits in the many low/moderate-risk gamblers (prevention paradox), so population-level measures can beat treatment-only strategies.
-5. Gambling harm is entangled with alcohol and drug use.
-6. Social norms are slow-moving stocks that amplify or dampen every other lever.
+> **Educational model, not a forecast.** It combines published estimates with clearly labelled assumptions to explore feedback, delays and trade-offs.
 
 ## Model
-**Hybrid agent-based + system dynamics.** 1 tick = 1 month; month 0 = January 2018; horizon 20 years after a hidden 10-year burn-in. 500–5,000 agents placed on a map of Australia (capital cities and regional towns by population), each linked to their nearest neighbours plus a few long-range ties; each agent represents `20,800,000 / n` adults. An exogenous online/sports-betting boom (to ~2023) reproduces HILDA's 2018 → 2022 rise.
+**Hybrid agent-based + system dynamics.** 1 tick = 1 month; month 0 = January 2018; horizon 20 years after a hidden 10-year burn-in. 500–5,000 agents on a map of Australia, each linked to nearby people plus a few long-range ties; each agent represents `20,800,000 / n` adults.
 
-### Agents
-- PGSI state: non-gambler · no risk (0) · low (1–2) · moderate (3–7) · problem (8+) · in treatment · in recovery
-- Pathways subtype (behaviourally conditioned 70%, emotionally vulnerable 20%, antisocial-impulsive 10%)
-- Age (18–85, generational turnover), lognormal vulnerability, alcohol and drug disorder (binary), product taste over lottery / sports / in-play / online casino / EGMs, legal vs illegal channel, debt, treatment queue
+- **Agents** move between PGSI states (non-gambler · no risk · low · moderate · high · in treatment · in recovery). Each carries the diagram's individual-harm variables: gambling intensity and losses, financial stress (losses relative to income), gambling as coping, emotional distress, family conflict and social isolation.
+- **System variables** follow the diagram: social acceptance (R1, B1), exposure, marketing exposure (R2), accessibility, participation, expenditure, operator revenue, tax revenue, government spend, treatment & counselling capacity, awareness of harm, help-seeking, public pressure and regulatory strength (B1, B2).
+- **Transitions**: `rate = base × Π multipliers`, `p = 1 − exp(−rate·dt)`, with multipliers from the diagram's variables centred so the 2018 status quo = 1.
+- **Delays** (marked ‖ in the diagram): social acceptance ≈ 5 years, awareness ≈ 2 years, regulation ≈ 3 years, budget cycle and capacity building ≈ 1 year each, isolation ≈ 1 year.
+- **Social cost** = harm units (1 low : 3 moderate : 10 high) × $8,100 a year (Victoria 2023 social-cost study, scaled nationally).
 
-### Transitions
-For every transition: `rate = base × Π multipliers`, `p = 1 − exp(−rate·dt)`. Multipliers are log-linear in centred levers (status quo = 1) and include vulnerability, subtype, comorbidity, product risk, debt, channel, and the share of gambling / at-risk peers × social pressure. Transitions go both ways; natural recovery is the main exit.
-
-### Aggregate stocks (first-order smoothing unless noted)
-| Stock | Driven by | τ |
+### Calibration
+| Target | Model (status quo, 6 seeds) | Source |
 |---|---|---|
-| Social acceptance | cultural anchor, marketing, participation, − awareness | 60 mo |
-| Public awareness | visible harm, campaigns | 24 mo |
-| Industry influence | operator profit | 36 mo |
-| Fiscal dependency | tax ÷ public budget | 12 mo |
-| Political resistance | dependency, influence, earmarking, budget crisis | 6 mo |
-| Treatment capacity | levy × tax + state support | 12 mo |
-| Illegal channel | tax above 20%, limits, bans, prohibition, − enforcement | 18 mo |
-| Effective lever values | every lever, 3rd-order delay; harm-reducing changes attenuated by up to 70% × resistance | 9 mo |
+| 2018: low 3.7%, moderate 2.5%, high 1.1% (7.3%) | ≈ 3.7 / 2.4 / 1.1 (7.3%) | HILDA via AIHW (Wilkins et al. 2024) |
+| 2022: 9.8% | ≈ 10.1% | idem |
+| Gambling losses ≈ $25-30bn/yr | ≈ $28bn (2018) | QGSO Australian Gambling Statistics |
+| At-risk share of spending 40–55% | ≈ 55% | AU and GB revenue-concentration studies |
+| Social cost ≫ tax | ≈ $37bn vs $8.5bn (2018) | Victoria 2023 study, scaled |
 
-### Causal loops
-R1 Peer contagion · R2 Normalization · R3 Fiscal capture · R4 Lobbying · R5 Dual addiction · B1 Harm visibility · B2 Treatment · B3 Funded protection (Shifting the Burden) · F1 Fixes that Fail. See the **Causal loops** tab for the interactive diagram.
-
-### Calibration (status quo, tested in `tests/calibration.test.ts`)
-| Target | Model | Source |
-|---|---|---|
-| 2018: low 3.7%, moderate 2.5%, high 1.1% (7.3%) | ≈ 3.6 / 2.5 / 1.1 (7.2%) | HILDA via AIHW (Wilkins et al. 2024) |
-| 2022: low 4.9%, moderate 3.1%, high 1.8% (9.8%) | ≈ 4.6 / 3.5 / 1.7 (9.8%) | idem |
-| Gambling losses ≈ $25bn/yr (2018) | ≈ $25bn | QGSO Australian Gambling Statistics |
-| Gambling tax ≈ $7-10bn/yr, ~7.5% of state tax | ≈ $7bn → $11bn, 7.5% | IBISWorld; state budgets |
-| Social cost ≫ tax | ≈ $40-50bn/yr (≈ 5× tax) | Victoria 2023 social-cost study ($14.1bn), scaled |
-| At-risk share of spend 40–50% | ≈ 43% | AU revenue-concentration studies |
-
-Every constant is in [`src/params.ts`](src/params.ts) with unit, range, source (or `ASSUMPTION`) and confidence.
-
-## Scenario presets
-Australia today (status quo) · Boom unchecked · Tobacco playbook: full ad ban (goal 1) · Catch it early (goals 2 and 3) · Mandatory loss limits (goal 2) · Public-health package (all goals) · Revenue-dependent state · Prohibition · Integrated addiction services. Every run starts in January 2018 and the preset phases in, so delays are visible.
-
-20-year results (at-risk share in 2038, one seed): status quo ≈ 15%, boom unchecked ≈ 23%, full ad ban ≈ 7.6%, catch it early ≈ 14%, loss limits ≈ 14% (but offshore share ≈ 27%), public-health package ≈ 3.4%, prohibition ≈ 9% (100% offshore).
-
-## Counterintuitive behaviours the model produces
-1. **Prohibition barely moves harm** (≈ −15% after 20 years) while sending ~100% of play to unprotected illegal operators and tax to zero.
-2. **The public-health package works but triggers a budget crisis** if introduced all at once: tax falls faster than the state can rebase its budget (τ ≈ 3 years). Phasing reforms avoids it.
-3. **Expensive good policy can raise political resistance:** the integrated-services scenario's costs drain the fiscal reserve, the crisis adds resistance, and later reforms get watered down.
-4. **A levy-funded treatment system shrinks as it succeeds** (B3, Shifting the Burden).
-5. **Prevention paradox:** low- and moderate-risk gamblers carry more aggregate harm than problem gamblers.
-6. **Under the status quo, lever effect sizes barely matter** in the tornado chart — they only bite once levers move. Base transition rates dominate status-quo uncertainty.
+The default seed (58) tracks HILDA closely in a single run (7.3% → 9.9%). Every constant is in [`src/params.ts`](src/params.ts) with unit, range, source (or `ASSUMPTION`) and confidence.
 
 ## Run, test, deploy
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # invariants, directional effects, scenario distinctness, calibration
+npm test           # invariants, one directional test per intervention, timing, calibration
 npm run build      # static site in dist/
 ```
-Deployed on Vercel as a static Vite site; every push to `main` redeploys.
+The diagram in the Causal loops tab is generated from [`scripts/cld/build_map.py`](scripts/cld/build_map.py) (`python3 -I scripts/cld/build_map.py page.html --ts src/ui/cldDiagram.ts`). Deployed on Vercel as a static Vite site; every push to `main` redeploys.
 
 ## Limitations
-Adults only (no youth or loot boxes) · binary alcohol/drug disorder · lever effect sizes combine directional evidence with assumptions · illegal-market response is contested and the main channelisation estimates are industry-funded · the prevention-paradox weighting is disputed.
+Adults only (no youth or loot boxes) · most arrow strengths combine directional evidence with assumptions (see the sensitivity tab) · social cost depends only on risk level · the offshore market, alcohol and drugs and the politics of gambling revenue are outside this version of the diagram · the prevention-paradox weighting is disputed.
 
 ## Main sources
-- Wardle et al. (2024), *Lancet Public Health* Commission on gambling
-- Petry, Stinson & Grant (2005), NESARC comorbidity, *J Clin Psychiatry*
-- Bijker et al. (2022), global help-seeking meta-analysis, *Addiction*
-- Browne & Rockloff (2018), prevention paradox, *J Behav Addict*
-- Goodwin et al. (2017), *A typical problem gambler affects six others*, *Int Gambling Studies*
+- AIHW / HILDA (Wilkins et al. 2024): PGSI categories 2018 and 2022
+- *The social costs of gambling to Victoria* (2023)
+- House of Representatives inquiry *You win some, you lose more* (Murphy inquiry, 2023)
 - Bouguettaya et al. (2020), advertising and gambling meta-analysis
-- ANU (2023) longitudinal low-risk transitions; Swelogs (2016) incidence
-- Rockefeller Institute (2016); MassBudget (2025); PwC for BGC (channelisation, industry-commissioned)
-- NetLogo community model *Pathological Gambling and Social Influence*
+- Farrelly et al. (2005), the "truth" anti-smoking campaign, *AJPH*
+- Gambling Commission (Great Britain), financial risk checks
+- Cowlishaw et al., Cochrane review of psychological therapies for problem gambling
+- Bijker et al. (2022), help-seeking meta-analysis; Browne & Rockloff (2018), prevention paradox
 
-Full links are in the app's **Model & sources** tab and in `docs/01-research.md`.
+Full links are in the app's **Model & sources** tab.
 
 ## Getting help
 If gambling is causing harm to you or someone close to you: [Gambling Help Online](https://www.gamblinghelponline.org.au) · 1800 858 858 (free, 24/7, Australia).

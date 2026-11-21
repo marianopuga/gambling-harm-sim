@@ -1,20 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { Simulation } from '../src/model/sim';
+import { Simulation, type Row } from '../src/model/sim';
 import { DEFAULT_LEVERS, type Levers } from '../src/model/levers';
 import { hazardToProb } from '../src/model/rng';
-import { SCENARIOS, scenarioLevers } from '../src/scenarios/presets';
 
-const run = (levers: Levers, months = 120, seed = 3, n = 1500, start: Levers = DEFAULT_LEVERS) => {
-  const sim = new Simulation({ n, seed, levers: start });
-  sim.setLevers(levers);
+const ALL: Levers = { ...DEFAULT_LEVERS, adBan: true, campaign: true, affordability: true, support: true };
+const run = (levers: Partial<Levers>, months = 120, seed = 3, n = 1500, policyStart = 0) => {
+  const sim = new Simulation({ n, seed, levers: DEFAULT_LEVERS, policyStart });
+  sim.setLevers({ ...DEFAULT_LEVERS, ...levers });
   for (let t = 0; t < months; t++) sim.step();
   return sim;
 };
-const tail = (sim: Simulation, k = 12) => sim.history.slice(-k).reduce((s, r) => s + r.target, 0) / k;
+const tail = (sim: Simulation, f: (r: Row) => number = (r) => r.target, k = 12) => sim.history.slice(-k).reduce((s, r) => s + f(r), 0) / k;
+/** Average a tail metric over a few seeds so single-seed noise cannot flip a direction. */
+const avgRuns = (levers: Partial<Levers>, f?: (r: Row) => number, seeds = [3, 4]) => seeds.reduce((s, seed) => s + tail(run(levers, 120, seed, 2000), f), 0) / seeds.length;
 
 describe('invariants', () => {
   it('conserves population: state shares always sum to 1', () => {
-    const sim = run(scenarioLevers('liberalization'), 60);
+    const sim = run(ALL, 60);
     for (const r of sim.history) expect(r.counts.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
   });
 
@@ -22,90 +24,86 @@ describe('invariants', () => {
     for (const h of [0, 1e-6, 0.01, 1, 50, 1e9, -3]) { const p = hazardToProb(h); expect(p).toBeGreaterThanOrEqual(0); expect(p).toBeLessThanOrEqual(1); }
   });
 
-  it('keeps every stock inside its bounds under extreme levers', () => {
-    const extreme: Levers = { ...DEFAULT_LEVERS, availability: 100, marketing: 100, innovation: 100, taxRate: 60, earmarking: 100, alcohol: 30, drugs: 15, socialPressure: 100, acceptance: 100, support: 0, enforcement: 0 };
-    const sim = run(extreme, 120);
-    for (const r of sim.history) {
-      for (const v of [r.acceptance, r.awareness, r.influence, r.resistance, r.illegalShare]) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
-      expect(Number.isFinite(r.tax)).toBe(true); expect(r.capacity).toBeGreaterThanOrEqual(0);
+  it('keeps every variable inside its bounds, with and without interventions', () => {
+    for (const levers of [DEFAULT_LEVERS, ALL]) {
+      const sim = run(levers, 240);
+      for (const r of sim.history) {
+        for (const v of [r.acceptance, r.awareness, r.pressure, r.regulation, r.financialStress, r.coping, r.distress, r.conflict, r.isolation, r.participation, r.adBanCoverage, r.campaign, r.affordability, r.support]) {
+          expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1);
+        }
+        for (const v of [r.tax, r.govSpend, r.capacity, r.expenditure, r.socialCost, r.marketing, r.accessibility, r.exposure, r.helpSeeking]) { expect(Number.isFinite(v)).toBe(true); expect(v).toBeGreaterThanOrEqual(0); }
+      }
     }
-  });
+  }, 30_000);
 
   it('is deterministic for a given seed', () => {
-    const a = run(scenarioLevers('public-health'), 48, 11), b = run(scenarioLevers('public-health'), 48, 11);
+    const a = run(ALL, 48, 11), b = run(ALL, 48, 11);
     expect(a.history.map((r) => r.target)).toEqual(b.history.map((r) => r.target));
-    const c = run(scenarioLevers('public-health'), 48, 12);
+    const c = run(ALL, 48, 12);
     expect(c.history.map((r) => r.target)).not.toEqual(a.history.map((r) => r.target));
   });
 });
 
-describe('directional effects (extreme levers)', () => {
-  const base = tail(run(DEFAULT_LEVERS));
-  const cases: [string, Partial<Levers>, 'up' | 'down'][] = [
-    ['more marketing', { marketing: 100 }, 'up'],
-    ['more availability', { availability: 100 }, 'up'],
-    ['more innovation', { innovation: 100 }, 'up'],
-    ['more alcohol disorder', { alcohol: 30 }, 'up'],
-    ['full ad ban', { adBan: 2 }, 'down'],
-    ['affordability + deposit + stake limits', { affordability: true, depositLimits: true, stakeLimits: true }, 'down'],
-    ['much more state support', { support: 100, levy: 15 }, 'down'],
-  ];
-  for (const [name, change, dir] of cases) {
-    it(`${name} → ${dir}`, () => {
-      const v = tail(run({ ...DEFAULT_LEVERS, ...change }));
-      if (dir === 'up') expect(v).toBeGreaterThan(base); else expect(v).toBeLessThan(base);
-    }, 30_000);
-  }
+describe('each intervention moves the system the way the diagram says', () => {
+  const sqRisk = avgRuns({});
+  const sqCost = avgRuns({}, (r) => r.socialCost);
+  const sqSpend = avgRuns({}, (r) => r.expenditure);
+  const exitRate = (r: Row) => r.outflow / Math.max(1, r.target * 20.8e6);
+  const sqExit = avgRuns({}, exitRate);
 
-  it('higher tax raises the illegal share; enforcement lowers it', () => {
-    // spend share is dominated by a few high-risk gamblers, so average over seeds and the last 3 years
-    const ill = (l: Partial<Levers>) => [3, 4, 5].reduce((acc, seed) => { const s = run({ ...DEFAULT_LEVERS, ...l }, 120, seed, 3000); return acc + s.history.slice(-36).reduce((a, r) => a + r.illegalShare, 0) / 36; }, 0) / 3;
-    const b = ill({});
-    expect(ill({ taxRate: 55 })).toBeGreaterThan(b);
-    expect(ill({ enforcement: 100 })).toBeLessThan(ill({ enforcement: 0 }));
+  it('1 · ad ban → less marketing, fewer people at risk', () => {
+    const s = run({ adBan: true });
+    expect(tail(s, (r) => r.marketing)).toBeLessThan(0.5);
+    expect(avgRuns({ adBan: true })).toBeLessThan(sqRisk * 0.8);
+  }, 30_000);
+
+  it('2 · anti-gambling campaign → lower social acceptance, fewer people at risk', () => {
+    expect(tail(run({ campaign: true }), (r) => r.acceptance)).toBeLessThan(tail(run({}), (r) => r.acceptance));
+    expect(avgRuns({ campaign: true })).toBeLessThan(sqRisk);
+  }, 30_000);
+
+  it('3 · affordability checks → lower losses and spending, less harm', () => {
+    expect(avgRuns({ affordability: true }, (r) => r.expenditure)).toBeLessThan(sqSpend * 0.85);
+    expect(avgRuns({ affordability: true }, (r) => r.socialCost)).toBeLessThan(sqCost);
+    // a lower threshold catches more people
+    const spend = (threshold: number) => tail(run({ affordability: true, affordabilityThreshold: threshold }), (r) => r.expenditure);
+    expect(spend(500)).toBeLessThan(spend(2000));
   }, 60_000);
 
-  it('prohibition sends tax to zero and almost all play to the illegal channel', () => {
-    const s = run(scenarioLevers('prohibition'), 120);
-    const r = s.history[s.history.length - 1];
-    expect(r.tax).toBeLessThan(1);
-    expect(r.illegalShare).toBeGreaterThan(0.9);
+  it('4 · recovery support → more places, more people leaving risk, less harm', () => {
+    const s = run({ support: true });
+    expect(tail(s, (r) => r.capacity)).toBeGreaterThan(tail(run({}), (r) => r.capacity));
+    expect(avgRuns({ support: true }, exitRate)).toBeGreaterThan(sqExit);
+    expect(avgRuns({ support: true }, (r) => r.socialCost)).toBeLessThan(sqCost * 0.9);
+  }, 60_000);
+
+  it('all four together bring at-risk gambling well below the status quo', () => {
+    expect(avgRuns(ALL)).toBeLessThan(sqRisk * 0.6);
   }, 30_000);
 });
 
-describe('scenario presets', () => {
-  it('produce qualitatively distinct 20-year trajectories', () => {
-    const finals = SCENARIOS.map((sc) => {
-      const pol = scenarioLevers(sc.id);
-      const s = run(pol, 240, 5, 2000, { ...DEFAULT_LEVERS, startDependency: pol.startDependency, earmarking: pol.earmarking });
-      const last = s.history.slice(-12);
-      return { id: sc.id, target: tail(s), ill: last.reduce((a, r) => a + r.illegalShare, 0) / 12, res: last.reduce((a, r) => a + r.resistance, 0) / 12 };
-    });
-    const get = (id: string) => finals.find((f) => f.id === id)!;
-    console.table(finals);
-    const sq = get('status-quo');
-    expect(get('liberalization').target).toBeGreaterThan(sq.target * 1.25);
-    expect(get('public-health').target).toBeLessThan(sq.target * 0.4);
-    expect(get('ad-ban').target).toBeLessThan(sq.target * 0.7); // prevention works on the inflow
-    expect(get('early-help').target).toBeLessThan(sq.target);
-    expect(get('loss-limits').target).toBeLessThan(sq.target);
-    expect(get('loss-limits').ill).toBeGreaterThan(sq.ill + 0.05); // limits only bind licensed channels
-    expect(get('captured').res).toBeGreaterThan(sq.res + 0.15);
-    expect(get('prohibition').ill).toBeGreaterThan(0.9);
-    expect(get('integrated').target).toBeLessThan(sq.target);
-  }, 120_000);
-});
+describe('timing', () => {
+  it('the ad ban phases out stage by stage and a shorter phase-out removes ads sooner', () => {
+    const fast = run({ adBan: true, adBanYears: 1 }, 30), slow = run({ adBan: true, adBanYears: 5 }, 30);
+    const stages = fast.events.filter((e) => e.text.startsWith('Ad ban')).map((e) => e.month);
+    expect(stages.length).toBe(4);
+    expect(stages[3]).toBeLessThanOrEqual(13);
+    expect(fast.history[24].adBanCoverage).toBeGreaterThan(0.95);
+    expect(slow.history[24].adBanCoverage).toBeLessThan(0.6);
+    expect(fast.history[24].marketing).toBeLessThan(slow.history[24].marketing);
+  });
 
-describe('policy start year', () => {
-  it('replays the status quo until the policy year, then the policy takes effect', () => {
-    const policy = { ...DEFAULT_LEVERS, adBan: 2 as const, marketing: 20 };
-    const mk = (policyStart: number) => { const s = new Simulation({ n: 1500, seed: 9, levers: DEFAULT_LEVERS, policyStart }); s.setLevers(policy); for (let t = 0; t < 200; t++) s.step(); return s; };
-    const sq = new Simulation({ n: 1500, seed: 9, levers: DEFAULT_LEVERS }); for (let t = 0; t < 200; t++) sq.step();
-    const late = mk(96), early = mk(0);
-    // identical to the status quo before 2026 (same seed, same levers)
+  it('switched-on interventions phase in through a delay', () => {
+    const s = run({ campaign: true, support: true }, 24);
+    expect(s.history[1].campaign).toBeLessThan(0.2);
+    expect(s.history[18].campaign).toBeGreaterThan(0.9);
+    expect(s.history[18].support).toBeGreaterThan(0.9);
+  });
+
+  it('replays the status quo until the policy year, then the interventions take effect', () => {
+    const sq = run({}, 200, 9), late = run(ALL, 200, 9, 1500, 96), early = run(ALL, 200, 9, 1500, 0);
     expect(late.history.slice(0, 96).map((r) => r.target)).toEqual(sq.history.slice(0, 96).map((r) => r.target));
-    const end = (s: Simulation) => s.history.slice(-12).reduce((a, r) => a + r.target, 0) / 12;
-    expect(end(late)).toBeLessThan(end(sq));
-    expect(end(early)).toBeLessThan(end(late)); // acting earlier helps more
+    expect(tail(late)).toBeLessThan(tail(sq));
+    expect(tail(early)).toBeLessThan(tail(late)); // acting earlier helps more
   }, 30_000);
 });

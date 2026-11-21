@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gambling Harm Systems Lab · Australia</title>
-  <meta name="description" content="Australia 2018–2038: an agent-based + system dynamics simulation of at-risk gambling. Pull policy levers to stop people becoming at risk, stop escalation and reduce harm." />
+  <meta name="description" content="Australia 2018–2038: an agent-based + system dynamics simulation of at-risk gambling, built on the group causal loop diagram. Switch on four interventions: an ad ban, an anti-gambling campaign, affordability checks and recovery support." />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -18,8 +18,7 @@
       <div><h1>Gambling Harm Systems Lab <span class="flag">Australia</span></h1><p class="sub" data-i18n="tagline"></p></div>
     </div>
     <div class="controls" role="toolbar" aria-label="Simulation controls">
-      <label class="field"><span data-i18n="scenario"></span><select id="scenario"></select></label>
-      <label class="field" title="The year your policies start. Before it, the model replays history with no new policies (2018 → 2022 is calibrated to HILDA)."><span>Policies from</span><select id="policyYear"><option value="2018">2018</option><option value="2022">2022</option><option value="2026">2026 (today)</option></select></label>
+      <label class="field" title="The year your interventions start. Before it, the model replays history with no interventions (2018 → 2022 is calibrated to HILDA)."><span>Interventions from</span><select id="policyYear"><option value="2018">2018</option><option value="2022">2022</option><option value="2026">2026 (today)</option></select></label>
       <div class="btn-group">
         <button id="play" class="btn primary" aria-label="Play">▶ <span data-i18n="play"></span></button>
         <button id="step" class="btn" data-i18n="step"></button>
@@ -30,9 +29,8 @@
         <summary class="btn">⚙ <span data-i18n="settings"></span></summary>
         <div class="menu-body">
           <label class="field"><span data-i18n="agents"></span><select id="agents"><option>500</option><option>1000</option><option>2000</option><option selected>3000</option><option>5000</option></select></label>
-          <label class="field"><span data-i18n="seed"></span><input id="seed" type="number" value="54" min="1" max="999999" /></label>
+          <label class="field"><span data-i18n="seed"></span><input id="seed" type="number" value="58" min="1" max="999999" /></label>
           <label class="field"><span data-i18n="network"></span><select id="network"><option value="smallworld">Neighbours + long-range ties</option><option value="grid">Neighbours only</option></select></label>
-          <label class="field"><span data-i18n="compareWith"></span><select id="compare"><option value="">—</option></select></label>
           <div class="row"><button id="share" class="btn" data-i18n="share"></button><button id="csv" class="btn" data-i18n="csv"></button></div>
           <button id="theme" class="btn" data-i18n="theme"></button>
         </div>
@@ -41,14 +39,15 @@
   </header>
 
   <div class="layout">
-    <aside class="levers" id="levers" aria-label="Policy levers">
+    <aside class="levers" id="levers" aria-label="Interventions">
       <div class="levers-head">
         <h2 data-i18n="levers"></h2>
         <button class="btn small" id="toggleLevers" aria-expanded="true" data-i18n="hide"></button>
       </div>
       <p class="hint" data-i18n="leverHint"></p>
       <p class="hint policy-note" id="policyNote" hidden></p>
-      <div id="leverGroups"></div>
+      <div id="ivList" class="iv-list"></div>
+      <button class="btn small iv-clear" id="clearAll" type="button">Switch all off</button>
     </aside>
 
     <main id="main">
@@ -62,7 +61,7 @@
             <div class="sf-val" id="sfIn">…</div>
             <div class="sf-lbl">adults start being at risk / yr</div>
             <div class="sf-arrow"><i></i></div>
-            <div class="sf-drivers">advertising · online wagering · friends who bet · social acceptance</div>
+            <div class="sf-drivers">marketing exposure · friends who bet · easy online access · social acceptance</div>
           </div>
           <div class="sf-stock">
             <div class="sf-title">At-risk gamblers <span>low + moderate + high (PGSI 1+)</span></div>
@@ -75,7 +74,7 @@
             <div class="sf-val" id="sfOut">…</div>
             <div class="sf-lbl">adults leave risk / yr</div>
             <div class="sf-arrow"><i></i></div>
-            <div class="sf-drivers">natural recovery · early detection · support &amp; treatment · quitting</div>
+            <div class="sf-drivers">natural recovery · help-seeking · treatment &amp; counselling · quitting</div>
           </div>
         </div>
         <div class="goals" id="goals"></div>
@@ -100,8 +99,6 @@
           <div class="overlays">
             <label><input type="checkbox" id="ovHeat" checked /> Heat map of at-risk gambling</label>
             <label><input type="checkbox" id="ovYoung" /> Highlight men 18-34</label>
-            <label><input type="checkbox" id="ovSud" /> <span data-i18n="ovSud"></span></label>
-            <label><input type="checkbox" id="ovIllegal" checked /> <span data-i18n="ovIllegal"></span></label>
             <label><input type="checkbox" id="ovLinks" /> <span data-i18n="ovLinks"></span></label>
             <span class="month" id="month"></span>
           </div>

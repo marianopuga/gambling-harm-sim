@@ -24,10 +24,11 @@ export function monteCarlo(initial: Levers, policy: Levers, opts: { seeds: numbe
 }
 
 export const SENSITIVITY_KEYS: ParamKey[] = [
-  'b_availability', 'b_marketing', 'b_innovation', 'b_acceptance', 'b_peerStart', 'b_peerRisk', 'b_product',
-  'b_awarenessHelp', 'b_supportHelp', 'alc_escalation', 'drug_escalation', 'gamblingToSud',
+  'b_accessibility', 'b_marketing', 'b_exposure', 'b_peerStart', 'a_participation', 'a_pressure', 'm_revenue', 'a_regulation',
+  'b_coping', 'b_isolation', 'b_stress', 'copingIntensity', 'stressScale', 'b_awarenessHelp', 'k_coverage',
   'h_LR_MR', 'h_MR_LR', 'h_MR_PG', 'h_PG_MR', 'h_PG_TX', 'h_TX_RC', 'h_RC_PG',
-  'illegalRisk', 'illegalTaxSlope', 'policyDelay', 'resistanceAttenuation', 'tau_acceptance',
+  'tau_acceptance', 'tau_awareness', 'tau_regulation', 'tau_capacity', 'policyDelay',
+  'adBanResidual', 'campaignAcceptance', 'affordabilityCoverage', 'supportBreadth',
 ];
 
 export interface SensRow { key: ParamKey; label: string; low: number; high: number; base: number }
