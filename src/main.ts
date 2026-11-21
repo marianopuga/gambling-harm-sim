@@ -39,7 +39,7 @@ const policyStart = () => (state.policyYear - 2018) * 12;
 /** The reference row: the month policies start (Jan 2018 by default, or the chosen policy year). */
 const baseRow = () => state.history[Math.min(policyStart(), state.history.length - 1)];
 /** 12 months of flows to compare against: the first year (2018) or the year before the policy year. */
-const baseFlows = () => (policyStart() > 0 ? state.history.slice(policyStart() - 11, policyStart() + 1) : state.history.slice(1, 13));
+const baseFlows = () => (policyStart() > 0 ? state.history.slice(policyStart() - 11, policyStart() + 1) : state.history.slice(0, 1));
 const startFor = (policy: Levers): Levers => {
   const s = { ...DEFAULT_LEVERS };
   for (const k of STRUCTURAL) (s as unknown as Record<string, unknown>)[k] = policy[k];
@@ -190,7 +190,7 @@ const mean = (rows: Row[], f: (r: Row) => number) => rows.reduce((a, r) => a + f
 /** The stock-and-flow panel and the three prevention goals (12-month averages; flows are noisy month to month). */
 function renderHero() {
   const h = state.history, r = h[h.length - 1]; if (!r) return;
-  const last = h.slice(-12).filter((x) => x.month > 0), base = baseFlows(), r0 = baseRow(), by = state.policyYear;
+  const last = h.slice(-12), base = baseFlows(), r0 = baseRow(), by = state.policyYear;
   const fin = mean(last, (x) => x.inflow), fout = mean(last, (x) => x.outflow), fesc = mean(last, (x) => x.escalations), fhelp = mean(last, (x) => x.helpAdmissions);
   $('sfIn').textContent = last.length ? `+${fmtPeople(fin)}` : '–';
   $('sfOut').textContent = last.length ? `−${fmtPeople(fout)}` : '–';
@@ -206,7 +206,7 @@ function renderHero() {
   const changed = JSON.stringify(state.levers) !== JSON.stringify(state.start);
   const hs = state.historyS.slice(0, h.length), rs = hs[hs.length - 1];
   const hasS = changed && !!rs && rs.month === r.month;
-  const lastS = hasS ? hs.slice(-12).filter((x) => x.month > 0) : [];
+  const lastS = hasS ? hs.slice(-12) : [];
   const imp = $('sfImpact');
   if (!changed) imp.innerHTML = `<span class="muted">As is — move a lever or pick a scenario to see its impact here.</span>`;
   else if (!hasS) imp.innerHTML = `<span class="muted">Comparing with "as is"…</span>`;
@@ -223,7 +223,7 @@ function renderHero() {
     if (!changed) impact = `<span class="gi muted">as is (no changes)</span>`;
     else if (!hasS || !lastS.length) impact = `<span class="gi muted">comparing…</span>`;
     else { const d = pct(now, asIs); impact = `<span class="gi ${tone(d)}">${Math.abs(d) < 0.005 ? 'same as "as is" so far' : `${sign(d)} vs as is (${fmt(asIs)})`}</span>`; }
-    const dy = base.length >= 6 ? pct(now, b0) : NaN;
+    const dy = base.length ? pct(now, b0) : NaN;
     const hist = Number.isFinite(dy) ? (r.month === r0.month ? `start of ${by}` : `${sign(dy)} vs ${by}`) : 'baseline…';
     return `<div class="goal"><span class="gk">${name}</span><span class="gt">${title}</span><span class="gv">${fmt(now)}</span>${impact}<span class="gd">${what} · ${hist}</span></div>`;
   };

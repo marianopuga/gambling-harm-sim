@@ -277,7 +277,13 @@ export class Simulation {
   private burnIn() {
     this.burning = true;
     const months = this.P.burnInMonths;
-    for (let t = 0; t < months; t++) this.step();
+    // average the flows over the last burn-in year so the opening month already shows yearly flows
+    const acc = { inflow: 0, outflow: 0, esc: 0, help: 0 }, tail = Math.min(12, months);
+    for (let t = 0; t < months; t++) {
+      this.step();
+      if (t >= months - tail) { acc.inflow += this.flow.inflow; acc.outflow += this.flow.outflow; acc.esc += this.flow.esc; acc.help += this.flow.help; }
+    }
+    this.flow = { inflow: acc.inflow / tail, outflow: acc.outflow / tail, esc: acc.esc / tail, help: acc.help / tail };
     this.burning = false;
     this.freezeRefs();
     this.month = 0;
